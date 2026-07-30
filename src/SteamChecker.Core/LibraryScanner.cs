@@ -1,0 +1,133 @@
+using SteamChecker.Core.Analysis;
+using SteamChecker.Core.Steam;
+
+namespace SteamChecker.Core;
+
+public sealed record ScanProgress
+{
+    public required int Completed { get; init; }
+
+    public required int Total { get; init; }
+
+    public string? CurrentTitle { get; init; }
+}
+
+public sealed record ScanResult
+{
+    public required IReadOnlyList<GameAssessment> Assessments { get; init; }
+
+    public required IReadOnlyList<SteamLibrary> Libraries { get; init; }
+
+    public required IReadOnlyList<SteamUser> Users { get; init; }
+
+    /// <summary>プレイ履歴が 1 件も取れなかった場合 true。判定の信頼度が落ちるので UI で明示すべき。</summary>
+    public required bool PlayHistoryUnavailable { get; init; }
+
+    public long TotalSizeBytes => Assessments.Sum(a => a.SizeBytes);
+
+    public long TotalEstimatedSavingBytes => Assessments
+        .Where(a => a.Advice is AdviceKind.Compress
+                              or AdviceKind.CompressWithWatcher
+                              or AdviceKind.CompressWithCaution)
+        .Sum(a => a.Estimate.EstimatedSavedBytes);
+
+    /// <summary>削除候補（事実として提示するのみ。ツールは削除しない）の合計サイズ。</summary>
+    public long UninstallCandidateBytes => Assessments
+        .Where(a => a.IsUninstallCandidate)
+        .Sum(a => a.SizeBytes);
+}
+
+/// <summary>
+/// Steam ライブラリ全体を走査して、タイトルごとの推奨を組み立てる。
+/// このクラスは一切書き込みを行わない。Phase 0（解析のみ）はこれだけで成立する。
+/// </summary>
+public sealed class LibraryScanner(
+    IFileSystem fs,
+    AdvisorOptions? advisorOptions = null,
+    SamplingOptions? samplingOptions = null,
+    ICompressibilityProbe? probe = null,
+    TimeProvider? timeProvider = null)
+{
+    private readonly IFileSystem _fs = fs;
+    private readonly SteamReader _reader = new(fs);
+    private readonly FolderProfiler _profiler = new(fs);
+    private readonly SamplingEstimator _estimator = new(fs, probe, samplingOptions);
+    private readonly Advisor _advisor = new(advisorOptions, timeProvider);
+
+    /// <param name="assumeNtfs">
+    /// ファイルシステム判定を飛ばして NTFS とみなす。
+    /// Windows 以外で判定ロジックを動作確認するための開発用オプション。
+    /// </param>
+    public ScanResult Scan(
+        string steamRoot,
+        IProgress<ScanProgress>? progress = null,
+        CancellationToken ct = default,
+        bool assumeNtfs = false)
+    {
+        var libraries = _reader.ReadLibraries(steamRoot);
+        var users = _reader.ReadUsers(steamRoot);
+        var playRecords = _reader.ReadMergedPlayRecords(users);
+
+        var apps = libraries.SelectMany(_reader.ReadInstalledApps).ToList();
+
+        // ファイルシステム名はドライブごとに 1 回だけ判定する（DriveInfo は安くない）
+        var ntfsCache = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+        var assessments = new List<GameAssessment>(apps.Count);
+        var completed = 0;
+
+        foreach (var app in apps)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            progress?.Report(new ScanProgress
+            {
+                Completed = completed,
+                Total = apps.Count,
+                CurrentTitle = app.Name,
+            });
+
+            completed++;
+
+            if (!_fs.DirectoryExists(app.FullPath)) continue;
+
+            var profile = _profiler.Profile(app.FullPath, ct);
+            var estimate = _estimator.Estimate(profile, ct);
+            playRecords.TryGetValue(app.AppId, out var play);
+
+            assessments.Add(_advisor.Assess(app, profile, estimate, play, IsNtfs(app.FullPath)));
+        }
+
+        progress?.Report(new ScanProgress { Completed = completed, Total = apps.Count });
+
+        return new ScanResult
+        {
+            Assessments = assessments
+                .OrderByDescending(a => a.Estimate.EstimatedSavedBytes)
+                .ToList(),
+            Libraries = libraries,
+            Users = users,
+            PlayHistoryUnavailable = playRecords.Count == 0,
+        };
+
+        bool IsNtfs(string path)
+        {
+            if (assumeNtfs) return true;
+
+            var root = _fs.GetVolumeRoot(path) ?? path;
+
+            if (ntfsCache.TryGetValue(root, out var cached)) return cached;
+
+            var name = _fs.GetFileSystemName(path);
+
+            // 判定できない場合は「NTFS である」と仮定する。
+            // ここで false にすると全タイトルが「圧縮非推奨」になり、
+            // 判定不能を「非対応」と誤って伝えてしまうため。
+            var isNtfs = name is null
+                         || name.Equals("NTFS", StringComparison.OrdinalIgnoreCase);
+
+            ntfsCache[root] = isNtfs;
+            return isNtfs;
+        }
+    }
+}

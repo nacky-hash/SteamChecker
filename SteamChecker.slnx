@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SteamChecker.App/SteamChecker.App.csproj" />
+    <Project Path="src/SteamChecker.Cli/SteamChecker.Cli.csproj" />
+    <Project Path="src/SteamChecker.Core/SteamChecker.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <!--
+      Windows / NuGet が使える環境では Tests（xUnit）を使う。
+      NuGet に到達できない環境では TestRunner（依存ゼロ）を使う。
+      テストの .cs ファイルは共通なので二重管理は発生しない。
+    -->
+    <Project Path="tests/SteamChecker.Tests/SteamChecker.Tests.csproj" />
+    <Project Path="tests/SteamChecker.TestRunner/SteamChecker.TestRunner.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NuGet に到達できない環境でもテストを実行するための、依存ゼロのランナー。
+    テストの .cs ファイルは tests/SteamChecker.Tests/ にあるものを
+    そのままリンクしているので、テストコードの二重管理は発生しない。
+
+    通常の Windows 開発環境では SteamChecker.Tests（本物の xUnit）を使うこと。
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>SteamChecker.TestRunner</RootNamespace>
+    <AssemblyName>SteamChecker.TestRunner</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- obj/bin の生成コード（AssemblyInfo 等）を巻き込むと属性が重複するため除外する -->
+    <Compile Include="..\SteamChecker.Tests\**\*.cs"
+             Exclude="..\SteamChecker.Tests\obj\**\*.cs;..\SteamChecker.Tests\bin\**\*.cs"
+             LinkBase="Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SteamChecker.Core\SteamChecker.Core.csproj" />
+  </ItemGroup>
+
+</Project>

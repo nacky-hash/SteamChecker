@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPF 版。判定ロジックは一切持たない（AGENTS.md / D-009）。
+    このプロジェクトの仕事は LibraryScanner.Scan() を呼んで
+    AdviceFormatter / PreFlightFormatter の文言を並べることだけ。
+    ロジックをここに書きたくなったら Core に書いてテストを付けること。
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>SteamChecker.App</RootNamespace>
+    <AssemblyName>SteamChecker.App</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SteamChecker.Core\SteamChecker.Core.csproj" />
+  </ItemGroup>
+
+</Project>
