@@ -139,9 +139,14 @@ public static class AdviceFormatter
             var d => $"{Duration(d)}未起動",
         };
 
-        var saving = a.Estimate.EstimatedSavedBytes > 0
-            ? $"圧縮見込み {Bytes(a.Estimate.EstimatedSavedBytes)}"
-            : "圧縮見込み ほぼなし";
+        // 既に圧縮済みのものに「圧縮見込み N GB」と出すと、
+        // 実現済みの削減量をこれから空く量として二重計上しているように読める。
+        // 実際に効いている削減量（論理 − 実占有）を示す
+        var saving = a.Advice == AdviceKind.AlreadyCompressed
+            ? $"圧縮済み（{Bytes(Math.Max(0, a.SizeBytes - a.PhysicalBytes))} 削減中）"
+            : a.Estimate.EstimatedSavedBytes > 0
+                ? $"圧縮見込み {Bytes(a.Estimate.EstimatedSavedBytes)}"
+                : "圧縮見込み ほぼなし";
 
         return $"{played} / {Bytes(a.SizeBytes)} / {saving}";
     }

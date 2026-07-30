@@ -159,6 +159,7 @@ public sealed class Advisor(AdvisorOptions? options = null, TimeProvider? timePr
             Advice = kind,
             Reasons = reasons,
             SizeBytes = size,
+            PhysicalBytes = profile.TotalPhysicalBytes,
             Estimate = estimate,
             LastPlayed = play?.LastPlayed,
             DaysSincePlayed = daysSincePlayed,

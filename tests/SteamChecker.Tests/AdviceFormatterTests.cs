@@ -45,4 +45,31 @@ public class AdviceFormatterTests
 
         Assert.Contains("実測", text);
     }
+
+    [Fact]
+    public void 圧縮済みタイトルに圧縮見込みを表示しない()
+    {
+        // 既に実現した削減量を「これから空く量」として出すと二重計上に読める。
+        // 実際に効いている削減量（論理 − 実占有）を示すこと
+        var a = Assessment(measured: true) with
+        {
+            Advice = AdviceKind.AlreadyCompressed,
+            SizeBytes = 100 * GiB,
+            PhysicalBytes = 60 * GiB,
+        };
+
+        var text = AdviceFormatter.OneLineSummary(a);
+
+        Assert.DoesNotContain("圧縮見込み", text);
+        Assert.Contains("圧縮済み", text);
+        Assert.Contains("40.0 GB", text);
+    }
+
+    [Fact]
+    public void 圧縮していないタイトルには圧縮見込みを表示する()
+    {
+        var a = Assessment(measured: true) with { Advice = AdviceKind.Compress };
+
+        Assert.Contains("圧縮見込み", AdviceFormatter.OneLineSummary(a));
+    }
 }

@@ -75,6 +75,9 @@ public sealed record GameAssessment
     /// <summary>論理サイズ（バイト）。</summary>
     public required long SizeBytes { get; init; }
 
+    /// <summary>ディスク上の実占有サイズ（バイト）。圧縮が効いていれば論理より小さい。</summary>
+    public long PhysicalBytes { get; init; }
+
     /// <summary>圧縮見込み（比率・削減量）。</summary>
     public required CompressionEstimate Estimate { get; init; }
 
