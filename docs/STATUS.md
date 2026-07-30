@@ -208,3 +208,5 @@ restore → **SHA-256 全 236 ファイル完全一致**。詳細は RESEARCH §
 検収中に得た知見（テスト手法）: WPF の ListView は UI 仮想化のため画面外の行が
 UIA ツリーに現れない（ItemContainerPattern で解決）。Win32 MessageBox の中身は
 UIA では Pane として見え InvokePattern 非対応（BM_CLICK 直送で解決）。
+
+**2026-07-30 ユーザー検収: OK**（GUI 圧縮実行を含む本日の全作業について）。
