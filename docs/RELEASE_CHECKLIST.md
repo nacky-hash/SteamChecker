@@ -4,8 +4,8 @@
 
 - [x] .NET SDK 10 を導入し、`dotnet build` / `dotnet test` が通ること（2026-07-30: 132件成功）
 - [x] `dotnet publish -r win-x64 --self-contained` が通ること（CLI 70.2MB / App 125.5MB）
-- [ ] SmartScreen で何が出るか自分の環境で確認し、README に正直に書く
-      （Release からダウンロードして確認可能になった。実行はユーザーの目視確認待ち）
+- [x] SmartScreen で何が出るか自分の環境で確認し、README に正直に書く
+      （2026-07-30 実機確認: 「WindowsによってPCが保護されました / 不明な発行元」。README に画面文言と実行手順を記載）
 - [x] ソース公開（MIT）→ https://github.com/nacky-hash/SteamChecker （2026-07-30）
 - [x] リリース成果物の SHA-256 を公開 → v0.1.0-alpha Release に SHA256SUMS.txt を添付
 - [x] 署名方針を明記する → README「配布の透明性」に無署名であることを明記

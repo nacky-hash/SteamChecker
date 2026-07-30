@@ -245,6 +245,26 @@ scan の閾値調整:
 
 - **無署名である。** コード署名証明書を持っていないため、実行時に SmartScreen の警告が出る。
   これをごまかす手段は取らない（取れない）。ソースからのビルドを推奨する
+
+### SmartScreen で実際に出る画面（2026-07-30 実機確認）
+
+Release からダウンロードした exe を初回実行すると、次の警告が出る:
+
+> **Windows によって PC が保護されました**
+> Microsoft Defender SmartScreen は認識されないアプリの起動を停止しました。
+> このアプリを実行すると、PC が危険にさらされる可能性があります。
+> アプリ: SteamChecker.App.exe / 発行元: 不明な発行元
+
+これは無署名 exe に対する Windows の標準動作。実行するには
+**「詳細情報」をクリック → 「実行」ボタン**。実行前に `SHA256SUMS.txt` と
+ダウンロードした exe のハッシュ（`Get-FileHash <exe>`）の一致を確認することを推奨する。
+この警告に不安がある場合は、ソースからビルドすれば警告は出ない。
+
+### 初回起動が遅い理由
+
+self-contained 単一 exe（.NET ランタイム同梱、125MB）のため、
+初回起動時は展開とウイルススキャン（ダウンロード直後は特に）で数秒〜十数秒かかる。
+**2回目以降は速くなる。** 起動時間の改善（ReadyToRun 化）は次版で検討。
 - **通信ゼロ。** ソースコード（`src/`）にネットワーク API（`System.Net` / `HttpClient` /
   `Socket` 等）の使用は一切ない。`grep -r "System.Net\|HttpClient" src --include="*.cs"` で確認できる。
   Steam の情報はすべてローカルファイル（`libraryfolders.vdf` / `appmanifest_*.acf` /
