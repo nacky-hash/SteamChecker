@@ -4,3 +4,4 @@ obj/
 .vs/
 .idea/
 *.log
+.claude/settings.local.json
