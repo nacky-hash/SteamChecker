@@ -124,6 +124,77 @@ public class LibraryScannerTests
         Assert.Single(result.Users);
     }
 
+    // -----------------------------------------------------------------
+    // ReadTitles — 起動直後に「空の画面」を見せないための軽量な一覧
+    // -----------------------------------------------------------------
+
+    private static IReadOnlyList<TitleSummary> ReadTitles(FakeFileSystem fs)
+        => new LibraryScanner(fs, timeProvider: new FixedTimeProvider(Now)).ReadTitles(SteamRoot);
+
+    [Fact]
+    public void タイトル一覧はサイズと最終プレイを返す()
+    {
+        var titles = ReadTitles(BuildLibrary());
+
+        Assert.Equal(4, titles.Count);
+
+        var movie = titles.Single(t => t.Name == "Movie Game");
+        Assert.Equal(60 * GiB, movie.SizeBytes);
+        Assert.Equal(1100, movie.DaysSincePlayed);
+        Assert.True(movie.IsFullyInstalled);
+    }
+
+    [Fact]
+    public void タイトル一覧はサイズの大きい順に並ぶ()
+    {
+        // 起動直後に「効きそうなもの」が上に来ていてほしい
+        var titles = ReadTitles(BuildLibrary());
+
+        Assert.Equal(
+            titles.Select(t => t.SizeBytes).OrderByDescending(s => s),
+            titles.Select(t => t.SizeBytes));
+    }
+
+    [Fact]
+    public void タイトル一覧は圧縮率の推定を行わない()
+    {
+        // 推定は 100GB 級の走査を伴うため、一覧取得では絶対に走らせない。
+        // プローブが呼ばれたら失敗するようにして保証する
+        var probe = new ThrowingProbe();
+        var scanner = new LibraryScanner(
+            BuildLibrary(), probe: probe, timeProvider: new FixedTimeProvider(Now));
+
+        var titles = scanner.ReadTitles(SteamRoot);
+
+        Assert.Equal(4, titles.Count);
+        Assert.False(probe.WasCalled);
+    }
+
+    [Fact]
+    public void タイトル一覧は起動記録が無ければ日数をnullにする()
+    {
+        // 「記録が無い」を「一度も遊んでいない」と断定しない（AGENTS.md）
+        var fs = BuildLibrary();
+        AddApp(fs, 500, "No History", 5 * GiB, updatedDaysAgo: 10);
+        AddCompressibleFile(fs, @"D:\SteamLibrary\steamapps\common\No History\game.exe", 5 * GiB);
+
+        var title = ReadTitles(fs).Single(t => t.Name == "No History");
+
+        Assert.Null(title.DaysSincePlayed);
+        Assert.Null(title.LastPlayed);
+    }
+
+    private sealed class ThrowingProbe : ICompressibilityProbe
+    {
+        public bool WasCalled { get; private set; }
+
+        public double Measure(ReadOnlySpan<byte> data)
+        {
+            WasCalled = true;
+            throw new InvalidOperationException("一覧取得で圧縮率の推定を行ってはならない");
+        }
+    }
+
     [Fact]
     public void 圧縮しやすく更新が落ち着いたタイトルは圧縮推奨になる()
     {

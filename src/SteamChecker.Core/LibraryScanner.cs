@@ -38,6 +38,32 @@ public sealed record ScanResult
 }
 
 /// <summary>
+/// 解析前のタイトル情報。manifest と localconfig を読むだけで得られる範囲。
+///
+/// 圧縮見込みの推定は 100GB 級のフォルダを走査するため数分かかる。
+/// それを待たずに「何が入っていて、いつ遊んで、どれくらい大きいか」だけを
+/// 即座に表示するために分けている（`ReadTitles` は実測で 50〜400ms）。
+/// </summary>
+public sealed record TitleSummary
+{
+    public required long AppId { get; init; }
+
+    public required string Name { get; init; }
+
+    public required string InstallPath { get; init; }
+
+    /// <summary>Steam が manifest で報告するサイズ。実測ではない。</summary>
+    public required long SizeBytes { get; init; }
+
+    public DateTimeOffset? LastPlayed { get; init; }
+
+    /// <summary>未起動日数。起動記録が無ければ null（「一度も遊んでいない」とは断定しない）。</summary>
+    public int? DaysSincePlayed { get; init; }
+
+    public bool IsFullyInstalled { get; init; }
+}
+
+/// <summary>
 /// Steam ライブラリ全体を走査して、タイトルごとの推奨を組み立てる。
 /// このクラスは一切書き込みを行わない。Phase 0（解析のみ）はこれだけで成立する。
 /// </summary>
@@ -53,6 +79,44 @@ public sealed class LibraryScanner(
     private readonly FolderProfiler _profiler = new(fs);
     private readonly SamplingEstimator _estimator = new(fs, probe, samplingOptions);
     private readonly Advisor _advisor = new(advisorOptions, timeProvider);
+
+    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
+
+    /// <summary>
+    /// インストール済みタイトルの一覧だけを返す。フォルダ走査もサンプリングも行わない。
+    /// UI が起動直後に「空の画面」を見せないためのもの。
+    /// </summary>
+    public IReadOnlyList<TitleSummary> ReadTitles(string steamRoot, CancellationToken ct = default)
+    {
+        var libraries = _reader.ReadLibraries(steamRoot);
+        var users = _reader.ReadUsers(steamRoot);
+        var playRecords = _reader.ReadMergedPlayRecords(users);
+        var now = _time.GetUtcNow();
+
+        var result = new List<TitleSummary>();
+
+        foreach (var app in libraries.SelectMany(_reader.ReadInstalledApps))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (!_fs.DirectoryExists(app.FullPath)) continue;
+
+            playRecords.TryGetValue(app.AppId, out var play);
+
+            result.Add(new TitleSummary
+            {
+                AppId = app.AppId,
+                Name = app.Name,
+                InstallPath = app.FullPath,
+                SizeBytes = app.SizeOnDisk,
+                LastPlayed = play?.LastPlayed,
+                DaysSincePlayed = play?.LastPlayed is { } lp ? (int)(now - lp).TotalDays : null,
+                IsFullyInstalled = app.IsFullyInstalled,
+            });
+        }
+
+        return result.OrderByDescending(t => t.SizeBytes).ToList();
+    }
 
     /// <param name="assumeNtfs">
     /// ファイルシステム判定を飛ばして NTFS とみなす。

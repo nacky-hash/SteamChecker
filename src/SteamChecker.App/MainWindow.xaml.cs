@@ -27,7 +27,14 @@ public sealed record ResultRow(
     long SavedBytes,
     string PlayedText,
     int DaysSincePlayedSort,
-    string Reasons);
+    string Reasons)
+{
+    /// <summary>
+    /// スクリーンリーダーはこの文字列を読み上げる。
+    /// レコードの既定の ToString() はフィールドのダンプになって実用にならない。
+    /// </summary>
+    public override string ToString() => $"{Title} / {SizeText} / {SavingText} / {PlayedText}";
+}
 
 public partial class MainWindow : Window
 {
@@ -52,6 +59,69 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+    }
+
+    // =================================================================
+    // 起動直後: タイトル一覧だけ即座に出す（圧縮見込みの解析はまだ走らせない）
+    //
+    // 圧縮率の実測は数分かかる。それを待たせて空の画面を見せるのは
+    // 「起動したのか分からない」という最悪の第一印象になる。
+    // manifest の読み取りだけなら実測 50〜400ms で済むので先に出す（D-016）。
+    // =================================================================
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _steamRoot ??= new SteamLocator(_fs, LocateSteamFromRegistry).Locate();
+
+            if (_steamRoot is null)
+            {
+                StatusText.Text = "Steam のインストール先が見つかりませんでした。";
+                ScanButton.IsEnabled = false;
+                return;
+            }
+
+            var titles = new LibraryScanner(_fs).ReadTitles(_steamRoot);
+            ShowTitles(titles);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"一覧を読めませんでした: {ex.Message}";
+        }
+    }
+
+    private void ShowTitles(IReadOnlyList<TitleSummary> titles)
+    {
+        var rows = titles
+            .Select(t => new ResultRow(
+                AppId: t.AppId,
+                GroupOrder: 0,
+                Group: "未解析（サイズの大きい順）",
+                Title: t.Name,
+                SizeText: AdviceFormatter.Bytes(t.SizeBytes),
+                SizeBytes: t.SizeBytes,
+                SavingText: "—",
+                SavedBytes: 0,
+                PlayedText: t.DaysSincePlayed is { } d ? $"{AdviceFormatter.Duration(d)}前" : "記録なし",
+                DaysSincePlayedSort: t.DaysSincePlayed ?? int.MaxValue,
+                Reasons: t.IsFullyInstalled
+                    ? "「圧縮見込みを解析」を押すと、実際のファイルを読んで圧縮率を測ります"
+                    : "インストールが完了していません（ダウンロード中・更新中の可能性）"))
+            .ToList();
+
+        var view = new ListCollectionView(rows);
+        view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ResultRow.Group)));
+        ResultList.ItemsSource = view;
+
+        ApplySort();
+
+        SummaryText.Text =
+            $"タイトル {titles.Count} 件 / 合計 {AdviceFormatter.Bytes(titles.Sum(t => t.SizeBytes))}"
+            + "（サイズは Steam の報告値）";
+
+        StatusText.Text = "一覧を表示しました。圧縮見込みはまだ測っていません。";
     }
 
     // =================================================================
@@ -61,7 +131,6 @@ public partial class MainWindow : Window
     private async void OnScanClick(object sender, RoutedEventArgs e)
     {
         ScanButton.IsEnabled = false;
-        ResultList.ItemsSource = null;
         SummaryText.Text = string.Empty;
 
         try
@@ -93,6 +162,7 @@ public partial class MainWindow : Window
         finally
         {
             ScanButton.IsEnabled = true;
+            ScanButton.Content = "再解析（数分）";
         }
     }
 
@@ -212,12 +282,17 @@ public partial class MainWindow : Window
     {
         var selected = SelectedRows();
 
+        var analyzed = selected.Count > 0 && selected.All(r => r.SavingText != "—");
+
         SelectionText.Text = selected.Count switch
         {
             0 => "タイトルを選択すると操作できます（Ctrl / Shift クリックで複数選択）",
-            1 => $"{selected[0].Title} — {selected[0].SizeText}",
+            1 => $"{selected[0].Title} — {selected[0].SizeText}"
+                 + (analyzed ? $" / 圧縮見込み {selected[0].SavingText}" : " / 圧縮見込みは未計測"),
             _ => $"{selected.Count} 件選択中 / 合計 {AdviceFormatter.Bytes(selected.Sum(r => r.SizeBytes))}"
-                 + $" / 圧縮見込み {AdviceFormatter.Bytes(selected.Sum(r => r.SavedBytes))}",
+                 + (analyzed
+                     ? $" / 圧縮見込み {AdviceFormatter.Bytes(selected.Sum(r => r.SavedBytes))}"
+                     : " / 圧縮見込みは未計測"),
         };
 
         UpdateActionButtons();
@@ -311,7 +386,11 @@ public partial class MainWindow : Window
             ? $"{runnable.Count} 件を圧縮します。\n\n"
               + string.Join("\n", runnable.Select(a =>
                   $"・{a.Name}  {AdviceFormatter.Bytes(SelectedSize(rows, a.AppId))}"
-                  + $"（見込み {AdviceFormatter.Bytes(SelectedSaving(rows, a.AppId))}）"))
+                  // 未解析のまま実行することもできる。その場合に見込み 0 B と出すと
+                  // 「圧縮しても無駄」という誤った印象を与えるので、測っていないと明示する
+                  + (SelectedAnalyzed(rows, a.AppId)
+                      ? $"（見込み {AdviceFormatter.Bytes(SelectedSaving(rows, a.AppId))}）"
+                      : "（圧縮見込みは未計測）")))
               + "\n\n圧縮は「元に戻す」でいつでも解除できます。ゲーム更新の書き込みでも自動的に解除されます。"
             : $"{runnable.Count} 件の圧縮を解除して元に戻します。\n\n"
               + string.Join("\n", runnable.Select(a => $"・{a.Name}"));
@@ -407,6 +486,9 @@ public partial class MainWindow : Window
 
     private static long SelectedSaving(List<ResultRow> rows, long appId)
         => rows.FirstOrDefault(r => r.AppId == appId)?.SavedBytes ?? 0;
+
+    private static bool SelectedAnalyzed(List<ResultRow> rows, long appId)
+        => rows.FirstOrDefault(r => r.AppId == appId)?.SavingText is { } s && s != "—";
 
     private PreFlightChecker CreatePreFlightChecker() => new(
         _fs,
