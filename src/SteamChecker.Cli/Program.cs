@@ -311,7 +311,7 @@ async Task<int> RunCompressAsync(bool compress)
             .Select(p => { try { return p.ProcessName; } catch { return string.Empty; } })
             .Where(n => n.Length > 0)
             .ToList(),
-        isFileInUse: IsFileInUse);
+        isFileInUse: FileLockProbe.IsFileInUse);
 
     var report = preFlight.Check(app);
 
@@ -558,24 +558,6 @@ static void WriteColor(ConsoleColor color, string text)
 }
 
 static void Error(string text) => WriteColor(ConsoleColor.Red, "エラー: " + text);
-
-/// <summary>
-/// ファイルが他プロセスに使用中か（排他オープンの可否で判定）。
-/// 実行中の exe はイメージとして掴まれているため排他オープンが失敗する。
-/// 判定できない場合は「使用中」と扱う（fail-closed）。
-/// </summary>
-static bool IsFileInUse(string path)
-{
-    try
-    {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
-        return false;
-    }
-    catch (Exception)
-    {
-        return true;
-    }
-}
 
 static void Warn(string text) => WriteColor(ConsoleColor.Yellow, "注意: " + text);
 
