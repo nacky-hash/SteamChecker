@@ -174,7 +174,7 @@ public class SteamReaderTests
         fs.AddTextFile($@"{SteamRoot}\userdata\12345678\config\localconfig.vdf", """
             "UserLocalConfigStore"
             {
-                "friends" { "PersonaName" "nacky" }
+                "friends" { "PersonaName" "TestUser" }
                 "Software"
                 {
                     "Valve"
@@ -196,7 +196,7 @@ public class SteamReaderTests
         var user = Assert.Single(reader.ReadUsers(SteamRoot));
 
         Assert.Equal(12345678, user.AccountId);
-        Assert.Equal("nacky", user.PersonaName);
+        Assert.Equal("TestUser", user.PersonaName);
 
         var records = reader.ReadPlayRecords(user);
 
