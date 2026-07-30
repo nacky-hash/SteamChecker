@@ -13,12 +13,17 @@
 - [ ] スクリーンショットに実在のユーザー名・Steam ID・フルパスが写っていないこと（スクショ未作成）
 - [x] 「必ず N% 削減」「性能低下なし」といった表現が一切ないこと（2026-07-30 レビューで確認・修正済み）
 
-### 成果物の SHA-256（2026-07-30 ビルド、GUI 圧縮配線後）
+### 成果物の SHA-256（2026-07-30、単体配布不具合の修正後）
 
 ```
 steamchecker.exe      70.2 MB  5C5E218B9C191FD3A1EA1B992ADE1B6CEEBAB27DAC63CC6EA8CCDC9E4FC59C09
-SteamChecker.App.exe 125.5 MB  DD1028C2EB4B7CFB1E472FDE8355BC74E842CFFC00B0A9D1FE34D1DD4D32EFF4
+SteamChecker.App.exe 133.3 MB  2D2288CA485F5C989318D9FF49AF0D1B0BE9D08F047166EF618BE6FEC29F4BFE
 ```
+
+**教訓（2026-07-30）**: 初回アップロードの App exe は WPF ネイティブ DLL が同梱されず、
+**exe 単体では DllNotFoundException で起動しなかった**（publish フォルダ内でのみ動作）。
+`IncludeNativeLibrariesForSelfExtract=true` で修正し、
+**「隔離フォルダに exe 単体をコピーして起動する」検証をリリース手順に必須化**する。
 
 ## Phase 1（圧縮実行）を出すまで
 

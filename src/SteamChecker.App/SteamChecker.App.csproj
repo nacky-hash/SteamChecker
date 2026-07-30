@@ -16,6 +16,13 @@
     <RootNamespace>SteamChecker.App</RootNamespace>
     <AssemblyName>SteamChecker.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!--
+      単一ファイル publish で WPF のネイティブ DLL（PresentationNative 等）も exe に同梱する。
+      既定では exe の「隣」に置かれるため、exe 単体を配布すると起動時に
+      DllNotFoundException で即死する（v0.1.0-alpha で実際に踏んだ）。
+    -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
