@@ -13,17 +13,24 @@
 - [ ] スクリーンショットに実在のユーザー名・Steam ID・フルパスが写っていないこと（スクショ未作成）
 - [x] 「必ず N% 削減」「性能低下なし」といった表現が一切ないこと（2026-07-30 レビューで確認・修正済み）
 
-### 成果物の SHA-256（2026-07-30、単体配布不具合の修正後）
+### 成果物の SHA-256（2026-07-31、起動時クラッシュ修正・2形態化の後）
 
 ```
-steamchecker.exe      70.2 MB  5C5E218B9C191FD3A1EA1B992ADE1B6CEEBAB27DAC63CC6EA8CCDC9E4FC59C09
-SteamChecker.App.exe 133.3 MB  2D2288CA485F5C989318D9FF49AF0D1B0BE9D08F047166EF618BE6FEC29F4BFE
+SteamChecker.App.exe                0.3 MB  68A3030DFCFDEB13B30CE4EF98B1627B1EBFA39450DCA48D0CF504EA388DEBB7
+SteamChecker.App-selfcontained.exe 133.4 MB  484219ABC50A37266B48CDB062A6A9152339F388975A7C044757FD8910174B16
+steamchecker.exe                   70.3 MB  AFCF7EEE6BA0CE9B577776C928C3C8324FB5B44A94BBAB59518B360BAF24DC9F
 ```
 
-**教訓（2026-07-30）**: 初回アップロードの App exe は WPF ネイティブ DLL が同梱されず、
-**exe 単体では DllNotFoundException で起動しなかった**（publish フォルダ内でのみ動作）。
-`IncludeNativeLibrariesForSelfExtract=true` で修正し、
-**「隔離フォルダに exe 単体をコピーして起動する」検証をリリース手順に必須化**する。
+### リリース前に必ず通す検証（過去に 2 回落とし穴を踏んだ）
+
+- [ ] **隔離フォルダに exe 単体をコピーして起動する**
+      （2026-07-30: ネイティブ DLL 非同梱で、publish フォルダ外では起動しない不良品を配った）
+- [ ] **一覧にデータが表示された状態まで確認する。ウィンドウが出ただけで合格にしない**
+      （2026-07-31: グループ見出しの TwoWay バインドで、行が描画された瞬間にクラッシュした。
+      前回はリストが空のまま「起動 OK」と判断したため見逃した）
+- [ ] `%LOCALAPPDATA%\SteamChecker\crash.log` が生成されていないこと
+
+自動化スクリプトの例は `scratchpad/release_verify.ps1`（隔離起動 → 行数 → crash.log を一括確認）。
 
 ## Phase 1（圧縮実行）を出すまで
 
