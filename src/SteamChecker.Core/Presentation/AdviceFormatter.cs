@@ -68,7 +68,7 @@ public static class AdviceFormatter
                 : $"ファイル構成からの推定では {context.Estimate.SavedFraction:P0} しか縮みません（実測サンプルなし）",
 
         ReasonCode.SavingTooSmall =>
-            $"縮む量が {Bytes(context.Estimate.EstimatedSavedBytes)} にとどまります",
+            $"縮む量が {Bytes(context.RemainingSavedBytes)} にとどまります",
 
         ReasonCode.RecentlyUpdated =>
             $"{context.DaysSinceUpdated} 日前に更新。ゲームが更新されると圧縮は自動的に解けます"
@@ -80,7 +80,7 @@ public static class AdviceFormatter
                 : "更新の記録がありません",
 
         ReasonCode.LargeSaving =>
-            $"{Bytes(context.Estimate.EstimatedSavedBytes)} 空きます",
+            $"{Bytes(context.RemainingSavedBytes)} 空きます",
 
         ReasonCode.NeverPlayed =>
             "起動記録がありません",
@@ -99,6 +99,10 @@ public static class AdviceFormatter
 
         ReasonCode.NotFullyInstalled =>
             "インストールが完了していません（ダウンロード中・更新中の可能性）",
+
+        ReasonCode.PartiallyDecompressed =>
+            $"一度圧縮されていますが、更新などで一部が解けています。もう一度圧縮すると"
+            + $" {Bytes(context.RemainingSavedBytes)} 減らせます",
 
         _ => code.ToString(),
     };
@@ -154,8 +158,8 @@ public static class AdviceFormatter
         // 実際に効いている削減量（論理 − 実占有）を示す
         var saving = a.Advice == AdviceKind.AlreadyCompressed
             ? $"圧縮済み（{Bytes(Math.Max(0, a.SizeBytes - a.PhysicalBytes))} 削減中）"
-            : a.Estimate.EstimatedSavedBytes > 0
-                ? $"圧縮見込み {Bytes(a.Estimate.EstimatedSavedBytes)}"
+            : a.RemainingSavedBytes > 0
+                ? $"圧縮見込み {Bytes(a.RemainingSavedBytes)}"
                 : "圧縮見込み ほぼなし";
 
         return $"{played} / {Bytes(a.SizeBytes)} / {saving}";

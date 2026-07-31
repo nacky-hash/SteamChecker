@@ -14,40 +14,46 @@ namespace SteamChecker.Tests;
 /// </summary>
 public class AdviceColorsTests
 {
-    public static IEnumerable<object[]> AllKinds()
-        => Enum.GetValues<AdviceKind>().Select(k => new object[] { k });
+    // 分類を増やしたときに自動で検査対象へ入るよう、列挙を回す形にしている。
+    // （Theory + MemberData は依存ゼロランナーが未対応なので Fact 内でループする）
 
-    [Theory]
-    [MemberData(nameof(AllKinds))]
-    public void 全ての分類に専用の色が割り当てられている(AdviceKind kind)
+    [Fact]
+    public void 全ての分類に専用の色が割り当てられている()
     {
-        var background = AdviceColors.Background(kind);
-        var accent = AdviceColors.Accent(kind);
+        foreach (var kind in Enum.GetValues<AdviceKind>())
+        {
+            Assert.True(
+                AdviceColors.Background(kind) != AdviceColors.NeutralBackground,
+                $"{kind} の背景色が中立色のまま（色の割り当て漏れ）");
 
-        Assert.NotEqual(AdviceColors.NeutralBackground, background);
-        Assert.NotEqual(AdviceColors.NeutralAccent, accent);
+            Assert.True(
+                AdviceColors.Accent(kind) != AdviceColors.NeutralAccent,
+                $"{kind} のアクセント色が中立色のまま（色の割り当て漏れ）");
+        }
     }
 
-    [Theory]
-    [MemberData(nameof(AllKinds))]
-    public void 色は有効な16進表記である(AdviceKind kind)
+    [Fact]
+    public void 色は有効な16進表記である()
     {
-        Assert.Matches("^#[0-9A-Fa-f]{6}$", AdviceColors.Background(kind));
-        Assert.Matches("^#[0-9A-Fa-f]{6}$", AdviceColors.Accent(kind));
+        foreach (var kind in Enum.GetValues<AdviceKind>())
+        {
+            Assert.Matches("^#[0-9A-Fa-f]{6}$", AdviceColors.Background(kind));
+            Assert.Matches("^#[0-9A-Fa-f]{6}$", AdviceColors.Accent(kind));
+        }
     }
 
-    [Theory]
-    [MemberData(nameof(AllKinds))]
-    public void 見出しの文字列から色を引ける(AdviceKind kind)
+    [Fact]
+    public void 見出しの文字列から色を引ける()
     {
         // UI はグループのキー（ラベル文字列）しか持っていない。
         // ラベルを変えたときに対応が切れると、その分類だけ色が消える
-        var label = AdviceFormatter.Label(kind);
+        foreach (var kind in Enum.GetValues<AdviceKind>())
+        {
+            var (background, accent) = AdviceColors.ByLabel(AdviceFormatter.Label(kind));
 
-        var (background, accent) = AdviceColors.ByLabel(label);
-
-        Assert.Equal(AdviceColors.Background(kind), background);
-        Assert.Equal(AdviceColors.Accent(kind), accent);
+            Assert.True(AdviceColors.Background(kind) == background, $"{kind} の背景色を引けない");
+            Assert.True(AdviceColors.Accent(kind) == accent, $"{kind} のアクセント色を引けない");
+        }
     }
 
     [Fact]

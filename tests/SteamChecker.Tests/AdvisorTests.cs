@@ -35,14 +35,20 @@ public class AdvisorTests
             Library = new SteamLibrary { Path = @"D:\SteamLibrary" },
         };
 
+    /// <param name="physicalBytes">
+    /// ディスク上の実占有。未指定なら論理サイズと同じ（＝未圧縮）。
+    /// 圧縮済みを表すときは必ず論理より小さい値を渡すこと
+    /// （フラグだけ立てて実占有を論理と同じにするのは、あり得ない状態を作ることになる）。
+    /// </param>
     private static FolderProfile Profile(
         long sizeBytes = 60 * GiB,
-        GameFeatures features = GameFeatures.None)
+        GameFeatures features = GameFeatures.None,
+        long? physicalBytes = null)
         => new()
         {
             Path = @"D:\SteamLibrary\steamapps\common\Test Game",
             TotalLogicalBytes = sizeBytes,
-            TotalPhysicalBytes = sizeBytes,
+            TotalPhysicalBytes = physicalBytes ?? sizeBytes,
             FileCount = 100,
             BytesByCategory = new Dictionary<FileCategory, long> { [FileCategory.Executable] = sizeBytes },
             Features = features,
@@ -89,12 +95,51 @@ public class AdvisorTests
     }
 
     [Fact]
-    public void 既に圧縮済みなら何もしない()
+    public void 既に圧縮済みで縮み代が無ければ何もしない()
     {
+        // 実占有が既に達成可能な水準（論理の 40%）まで縮んでいる状態
+        var size = 60 * GiB;
         var result = CreateAdvisor().Assess(
-            App(), Profile(features: GameFeatures.AlreadyCompressed), Estimate(0.4), Played(5), true);
+            App(size),
+            Profile(size, GameFeatures.AlreadyCompressed, physicalBytes: (long)(size * 0.4)),
+            Estimate(0.4, size), Played(5), true);
 
         Assert.Equal(AdviceKind.AlreadyCompressed, result.Advice);
+        Assert.Equal(0, result.RemainingSavedBytes);
+    }
+
+    [Fact]
+    public void 圧縮済みでも一部が解けていれば再圧縮を勧める()
+    {
+        // ゲーム更新でファイルが書き込まれると、その部分だけ圧縮が解ける。
+        // 全部が解けるのはアンインストール→再インストール級の出来事で、通常は「一部だけ」。
+        // 閾値だけで「圧縮済み」と切り捨てると、再実行しても何も起きない案内になる（D-019）
+        var size = 60 * GiB;
+        var result = CreateAdvisor().Assess(
+            App(size),
+            // 40% まで縮められるのに、更新で 80% まで戻ってしまっている
+            Profile(size, GameFeatures.AlreadyCompressed, physicalBytes: (long)(size * 0.8)),
+            Estimate(0.4, size), Played(5), true);
+
+        Assert.NotEqual(AdviceKind.AlreadyCompressed, result.Advice);
+        Assert.Contains(ReasonCode.PartiallyDecompressed, result.Reasons);
+
+        // 残りは 80% − 40% = 40% 分だけ。既に実現している 20% を足して 60% と言わないこと
+        Assert.Equal((long)(size * 0.4), result.RemainingSavedBytes);
+    }
+
+    [Fact]
+    public void 圧縮見込みは実現済みの削減を二重計上しない()
+    {
+        var size = 100 * GiB;
+        var result = CreateAdvisor().Assess(
+            App(size),
+            Profile(size, physicalBytes: (long)(size * 0.75)),
+            Estimate(0.62, size), Played(5), true);
+
+        // 素朴な計算（論理 × (1 − 0.62) = 38%）ではなく、
+        // 現在の占有からの残り（75% − 62% = 13%）
+        Assert.Equal((long)(size * 0.13), result.RemainingSavedBytes);
     }
 
     [Fact]

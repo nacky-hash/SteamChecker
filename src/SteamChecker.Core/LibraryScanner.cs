@@ -47,7 +47,7 @@ public sealed record ScanResult
         .Where(a => a.Advice is AdviceKind.Compress
                               or AdviceKind.CompressUpdatesOften
                               or AdviceKind.CompressAntiCheat)
-        .Sum(a => a.Estimate.EstimatedSavedBytes);
+        .Sum(a => a.RemainingSavedBytes);
 
     /// <summary>削除候補（事実として提示するのみ。ツールは削除しない）の合計サイズ。</summary>
     public long UninstallCandidateBytes => Assessments
@@ -199,7 +199,7 @@ public sealed class LibraryScanner(
         return new ScanResult
         {
             Assessments = assessments
-                .OrderByDescending(a => a.Estimate.EstimatedSavedBytes)
+                .OrderByDescending(a => a.RemainingSavedBytes)
                 .ToList(),
             Libraries = libraries,
             Users = users,

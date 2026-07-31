@@ -45,6 +45,8 @@ public enum ReasonCode
     DeleteYieldsMuchMore,
     ScanTruncated,
     NotFullyInstalled,
+    /// <summary>圧縮済みだが、ゲーム更新などで一部の圧縮が解けている。</summary>
+    PartiallyDecompressed,
 }
 
 /// <summary>
@@ -82,6 +84,17 @@ public sealed record GameAssessment
     /// <summary>ディスク上の実占有サイズ（バイト）。圧縮が効いていれば論理より小さい。</summary>
     public long PhysicalBytes { get; init; }
 
+    /// <summary>
+    /// これから圧縮して空く量。**現在のディスク占有から見た残り**であり、
+    /// 既に実現している削減は含まない。
+    ///
+    /// <see cref="CompressionEstimate.EstimatedSavedBytes"/> は
+    /// 「未圧縮の状態から圧縮しきったときの削減量」なので、
+    /// 一部だけ圧縮が解けているタイトルでは実現済み分を二重計上してしまう。
+    /// 表示・集計にはこちらを使うこと。
+    /// </summary>
+    public long RemainingSavedBytes { get; init; }
+
     /// <summary>圧縮見込み（比率・削減量）。</summary>
     public required CompressionEstimate Estimate { get; init; }
 
@@ -101,8 +114,8 @@ public sealed record GameAssessment
     /// 圧縮見込みがゼロに近いと無限大になるため上限を設けている。
     /// この数字を出すこと自体が「圧縮が最適解とは限らない」という誠実さの担保になる。
     /// </summary>
-    public double DeleteVsCompressMultiple => Estimate.EstimatedSavedBytes > 0
-        ? Math.Min((double)SizeBytes / Estimate.EstimatedSavedBytes, 999.0)
+    public double DeleteVsCompressMultiple => RemainingSavedBytes > 0
+        ? Math.Min((double)SizeBytes / RemainingSavedBytes, 999.0)
         : 999.0;
 
     /// <summary>削除を検討する価値があるか（事実としての判定。実行はしない）。</summary>

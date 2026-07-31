@@ -60,8 +60,20 @@ public sealed class Advisor(AdvisorOptions? options = null, TimeProvider? timePr
             : (int?)null;
 
         var size = profile.TotalLogicalBytes > 0 ? profile.TotalLogicalBytes : app.SizeOnDisk;
-        var savedBytes = estimate.EstimatedSavedBytes;
-        var savedFraction = estimate.SavedFraction;
+
+        // 「これから空く量」は、いまディスクを占めている量から、
+        // 圧縮しきったときの占有量を引いたもの。
+        //
+        // 単純に「論理サイズ × (1 − 推定比)」で出すと、既に一部圧縮されている
+        // タイトルで**実現済みの削減を二重計上**する。
+        // 例: 論理 95GB / 実占有 71GB（一部解除済み）/ 推定比 0.62 のとき、
+        //   二重計上: 95 × 0.38 = 36GB（うち 24GB は既に実現済み）
+        //   正しい値: 71 − 95×0.62 = 12GB
+        var achievableBytes = (long)(size * estimate.Ratio);
+        var currentBytes = profile.TotalPhysicalBytes > 0 ? profile.TotalPhysicalBytes : size;
+
+        var savedBytes = Math.Max(0, currentBytes - achievableBytes);
+        var savedFraction = size > 0 ? (double)savedBytes / size : 0;
 
         if (profile.Truncated) reasons.Add(ReasonCode.ScanTruncated);
         if (!app.IsFullyInstalled) reasons.Add(ReasonCode.NotFullyInstalled);
@@ -115,8 +127,22 @@ public sealed class Advisor(AdvisorOptions? options = null, TimeProvider? timePr
 
         if (profile.Features.HasFlag(GameFeatures.AlreadyCompressed))
         {
-            reasons.Add(ReasonCode.AlreadyCompressed);
-            return Build(AdviceKind.AlreadyCompressed);
+            // 圧縮済みでも、ゲーム更新で書き込まれた部分は圧縮が解けている。
+            // まだ意味のある量が残っているなら「圧縮済み」で終わらせず、
+            // 通常の判定に流して再圧縮を勧める。
+            //
+            // ここで打ち切ると「更新後にまた実行してください」と案内しておきながら、
+            // 実行しても『圧縮済み』としか出ない、という食い違いが起きる（D-019）
+            var worthRecompressing =
+                savedFraction >= _options.MinSavedFraction && savedBytes >= _options.MinSavedBytes;
+
+            if (!worthRecompressing)
+            {
+                reasons.Add(ReasonCode.AlreadyCompressed);
+                return Build(AdviceKind.AlreadyCompressed);
+            }
+
+            reasons.Add(ReasonCode.PartiallyDecompressed);
         }
 
         // --- 効果が小さいケース ---
@@ -161,6 +187,7 @@ public sealed class Advisor(AdvisorOptions? options = null, TimeProvider? timePr
             SizeBytes = size,
             PhysicalBytes = profile.TotalPhysicalBytes,
             Estimate = estimate,
+            RemainingSavedBytes = savedBytes,
             LastPlayed = play?.LastPlayed,
             DaysSincePlayed = daysSincePlayed,
             DaysSinceUpdated = daysSinceUpdated,

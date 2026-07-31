@@ -367,7 +367,7 @@ public partial class MainWindow : Window
                 var compressed = a.Advice == AdviceKind.AlreadyCompressed;
                 var saved = compressed
                     ? Math.Max(0, a.SizeBytes - a.PhysicalBytes)
-                    : a.Estimate.EstimatedSavedBytes;
+                    : a.RemainingSavedBytes;
 
                 var savingText = compressed
                     ? $"圧縮済み {AdviceFormatter.Bytes(saved)}"
@@ -395,8 +395,8 @@ public partial class MainWindow : Window
                     Reasons = reasons,
                     OriginalGroup = AdviceFormatter.Label(a.Advice),
                     OriginalGroupOrder = order,
-                    OriginalSavedBytes = a.Estimate.EstimatedSavedBytes,
-                    OriginalSavingText = AdviceFormatter.Bytes(a.Estimate.EstimatedSavedBytes),
+                    OriginalSavedBytes = a.RemainingSavedBytes,
+                    OriginalSavingText = AdviceFormatter.Bytes(a.RemainingSavedBytes),
                     OriginalReasons = reasons,
                 };
             })
@@ -746,7 +746,8 @@ public partial class MainWindow : Window
             row.SavingText = $"圧縮済み {AdviceFormatter.Bytes(saved)}";
             row.Reasons = $"この操作で圧縮しました: {AdviceFormatter.Bytes(result.BytesBefore)}"
                           + $" → {AdviceFormatter.Bytes(result.BytesAfter)}"
-                          + $"（{AdviceFormatter.Bytes(saved)} 削減・実測値）";
+                          + $"（{AdviceFormatter.Bytes(saved)} 削減・実測値）"
+                          + " ／ ゲームがアップデートされると解けるので、更新後はまた実行してください";
         }
         else
         {

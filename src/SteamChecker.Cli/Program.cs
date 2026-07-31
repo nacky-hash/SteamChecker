@@ -95,7 +95,7 @@ int RunScan()
                 Advice = a.Advice.ToString(),
                 Reasons = a.Reasons.Select(r => r.ToString()),
                 a.SizeBytes,
-                EstimatedSavedBytes = a.Estimate.EstimatedSavedBytes,
+                EstimatedSavedBytes = a.RemainingSavedBytes,
                 CompressionRatio = Math.Round(a.Estimate.Ratio, 4),
                 Measured = a.Estimate.Measured,
                 a.DaysSincePlayed,

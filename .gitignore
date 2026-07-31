@@ -6,3 +6,4 @@ obj/
 *.log
 .claude/settings.local.json
 publish/
+*_wpftmp.csproj

@@ -119,6 +119,33 @@ public static class Assert
         if (!collection.Cast<object?>().Any()) throw new XunitAssertException("Assert.NotEmpty: 空でした");
     }
 
+    public static void Matches(string pattern, string actualString)
+    {
+        if (actualString is null ||
+            !System.Text.RegularExpressions.Regex.IsMatch(actualString, pattern))
+        {
+            throw new XunitAssertException($"Assert.Matches: \"{actualString}\" が /{pattern}/ に一致しません");
+        }
+    }
+
+    public static void All<T>(IEnumerable<T> collection, Action<T> action)
+    {
+        var index = 0;
+        foreach (var item in collection)
+        {
+            try
+            {
+                action(item);
+            }
+            catch (Exception ex)
+            {
+                throw new XunitAssertException($"Assert.All: {index} 番目の要素で失敗 — {ex.Message}");
+            }
+
+            index++;
+        }
+    }
+
     public static void Contains(string expectedSubstring, string actualString)
     {
         if (actualString is null || !actualString.Contains(expectedSubstring, StringComparison.Ordinal))
