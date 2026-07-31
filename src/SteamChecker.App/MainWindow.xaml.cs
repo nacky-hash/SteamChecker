@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using SteamChecker.Core;
 using SteamChecker.Core.Analysis;
@@ -41,6 +42,18 @@ public partial class MainWindow : Window
     private readonly PhysicalFileSystem _fs = new();
     private string? _steamRoot;
     private CancellationTokenSource? _operationCts;
+    private readonly System.Diagnostics.Stopwatch _elapsed = new();
+
+    /// <summary>
+    /// 経過・残り時間の表示を 1 秒ごとに更新する。
+    ///
+    /// 進捗の報告はタイトル単位でしか来ない。100GB 級のタイトルを処理している間は
+    /// 十数秒〜数分にわたって報告が届かず、時間表示が固まって「止まった」ように見える。
+    /// 待ち時間を短く感じさせるには、数字が動き続けていることが要る。
+    /// </summary>
+    private readonly DispatcherTimer _ticker = new() { Interval = TimeSpan.FromSeconds(1) };
+
+    private double _lastFraction;
 
     private string _sortColumn = string.Empty;
     private ListSortDirection _sortDirection = ListSortDirection.Ascending;
@@ -60,6 +73,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        _ticker.Tick += (_, _) => ProgressEta.Text = EstimateRemaining(_lastFraction);
     }
 
     // =================================================================
@@ -130,30 +144,39 @@ public partial class MainWindow : Window
 
     private async void OnScanClick(object sender, RoutedEventArgs e)
     {
-        ScanButton.IsEnabled = false;
-        SummaryText.Text = string.Empty;
+        if (_steamRoot is null)
+        {
+            StatusText.Text = "Steam のインストール先が見つかりませんでした。";
+            return;
+        }
+
+        _operationCts = new CancellationTokenSource();
+        SetBusy(true);
+        BeginProgress("圧縮見込みを解析しています");
 
         try
         {
-            _steamRoot ??= new SteamLocator(_fs, LocateSteamFromRegistry).Locate();
-
-            if (_steamRoot is null)
-            {
-                StatusText.Text = "Steam のインストール先が見つかりませんでした。";
-                return;
-            }
-
             var progress = new Progress<ScanProgress>(p =>
-                StatusText.Text = p.CurrentTitle is null
-                    ? $"解析完了 ({p.Completed}/{p.Total})"
-                    : $"解析中 [{p.Completed + 1}/{p.Total}] {p.CurrentTitle}");
+            {
+                if (p.CurrentTitle is null) return;
+
+                UpdateProgress(
+                    p.Fraction,
+                    $"解析中 [{p.Completed + 1}/{p.Total}] {p.CurrentTitle}");
+            });
 
             // 判定は全て Core 側。UI スレッドを塞がないよう別スレッドで回す
             var scanner = new LibraryScanner(_fs);
             var steamRoot = _steamRoot;
-            var result = await Task.Run(() => scanner.Scan(steamRoot, progress));
+            var token = _operationCts.Token;
+            var result = await Task.Run(() => scanner.Scan(steamRoot, progress, token), token);
 
             ShowResult(result);
+            ScanButton.Content = "再解析（数分）";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = "解析を中止しました（途中までの結果は表示していません）。";
         }
         catch (Exception ex)
         {
@@ -161,9 +184,84 @@ public partial class MainWindow : Window
         }
         finally
         {
-            ScanButton.IsEnabled = true;
-            ScanButton.Content = "再解析（数分）";
+            _operationCts?.Dispose();
+            _operationCts = null;
+            EndProgress();
+            SetBusy(false);
         }
+    }
+
+    // =================================================================
+    // 進捗表示
+    //
+    // 進捗率は件数ではなくバイト数で出す（ScanProgress.Fraction）。
+    // 「44 件中 40 件終わったのに 30%」は正しい表示で、
+    // 残りに 117GB のタイトルが控えているという事実を伝えている。
+    // =================================================================
+
+    private void BeginProgress(string caption)
+    {
+        _elapsed.Restart();
+        _lastFraction = 0;
+        ProgressArea.Visibility = Visibility.Visible;
+        ProgressGauge.IsIndeterminate = false;
+        ProgressGauge.Value = 0;
+        ProgressPercent.Text = "0%";
+        ProgressCaption.Text = caption;
+        ProgressEta.Text = "経過 0 秒";
+        _ticker.Start();
+    }
+
+    private void UpdateProgress(double fraction, string caption)
+    {
+        _lastFraction = Math.Clamp(fraction, 0.0, 1.0);
+        ProgressGauge.IsIndeterminate = false;
+        ProgressGauge.Value = _lastFraction;
+        ProgressPercent.Text = $"{_lastFraction:P0}";
+        ProgressCaption.Text = caption;
+        ProgressEta.Text = EstimateRemaining(_lastFraction);
+        StatusText.Text = caption;
+    }
+
+    /// <summary>総量が読めない処理（compact.exe の進行中など）のための表示。</summary>
+    private void UpdateProgressIndeterminate(string caption)
+    {
+        _lastFraction = 0;
+        ProgressGauge.IsIndeterminate = true;
+        ProgressPercent.Text = string.Empty;
+        ProgressCaption.Text = caption;
+        StatusText.Text = caption;
+    }
+
+    private void EndProgress()
+    {
+        _ticker.Stop();
+        _elapsed.Stop();
+        ProgressArea.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// 残り時間の目安。進捗が浅いうちは推定が暴れるので出さない
+    /// （「残り 3 時間」と出してから 1 分で終わるのは、無いより悪い）。
+    /// </summary>
+    private string EstimateRemaining(double fraction)
+    {
+        if (fraction < 0.05 || fraction >= 1.0) return $"経過 {Duration(_elapsed.Elapsed)}";
+
+        var remaining = TimeSpan.FromSeconds(
+            _elapsed.Elapsed.TotalSeconds / fraction * (1 - fraction));
+
+        return $"残り {Duration(remaining)} 前後";
+    }
+
+    private static string Duration(TimeSpan span) => span.TotalMinutes >= 1
+        ? $"{(int)span.TotalMinutes} 分 {span.Seconds} 秒"
+        : $"{span.Seconds} 秒";
+
+    private void OnStopClick(object sender, RoutedEventArgs e)
+    {
+        _operationCts?.Cancel();
+        StatusText.Text = "中止しています...";
     }
 
     private void ShowResult(ScanResult result)
@@ -312,7 +410,6 @@ public partial class MainWindow : Window
 
     private async void OnRestoreClick(object sender, RoutedEventArgs e) => await RunBatchAsync(compress: false);
 
-    private void OnCancelClick(object sender, RoutedEventArgs e) => _operationCts?.Cancel();
 
     private async Task RunBatchAsync(bool compress)
     {
@@ -411,10 +508,15 @@ public partial class MainWindow : Window
 
         _operationCts = new CancellationTokenSource();
         SetBusy(true);
+        BeginProgress(compress ? "圧縮しています" : "元に戻しています");
 
         var succeeded = 0;
         long totalSaved = 0;
         var failures = new List<string>();
+
+        // 圧縮も所要時間は容量に比例する。件数ではなくバイト数で進捗を出す
+        var plannedBytes = runnable.Sum(a => SelectedSize(rows, a.AppId));
+        long doneBytes = 0;
 
         try
         {
@@ -424,10 +526,25 @@ public partial class MainWindow : Window
 
                 var app = runnable[i];
                 var index = i;
+                var appBytes = SelectedSize(rows, app.AppId);
+                var baseBytes = doneBytes;
 
                 var progress = new Progress<CompressionProgress>(p =>
-                    StatusText.Text = $"[{index + 1}/{runnable.Count}] {(compress ? "圧縮中" : "復元中")}: "
-                                      + $"{app.Name}  {p.FilesProcessed} ファイル処理");
+                {
+                    var caption = $"[{index + 1}/{runnable.Count}] {(compress ? "圧縮中" : "復元中")}: "
+                                  + $"{app.Name}  {p.FilesProcessed} ファイル処理";
+
+                    if (plannedBytes > 0)
+                    {
+                        // 1 タイトル内の進行度は分からないので、
+                        // 完了済みバイト数だけで測る（タイトルが終わるたびに進む）
+                        UpdateProgress((double)baseBytes / plannedBytes, caption);
+                    }
+                    else
+                    {
+                        UpdateProgressIndeterminate(caption);
+                    }
+                });
 
                 var result = compress
                     ? await engine.CompressAsync(app.FullPath, CompressionAlgorithm.Lzx, progress, _operationCts.Token)
@@ -451,6 +568,13 @@ public partial class MainWindow : Window
                 else
                 {
                     failures.Add($"{app.Name}: {result.ErrorMessage}");
+                }
+
+                doneBytes += appBytes;
+                if (plannedBytes > 0)
+                {
+                    UpdateProgress((double)doneBytes / plannedBytes,
+                        $"[{i + 1}/{runnable.Count}] 完了: {app.Name}");
                 }
             }
 
@@ -477,6 +601,7 @@ public partial class MainWindow : Window
         {
             _operationCts.Dispose();
             _operationCts = null;
+            EndProgress();
             SetBusy(false);
         }
     }
@@ -502,7 +627,8 @@ public partial class MainWindow : Window
     {
         ScanButton.IsEnabled = !busy;
         ResultList.IsEnabled = !busy;
-        CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        // 中止手段は 1 つに統一する（解析・圧縮とも上の「中止」ボタン）
+        StopButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         UpdateActionButtons();
     }
 

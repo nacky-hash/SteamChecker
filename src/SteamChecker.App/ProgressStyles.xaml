@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        角丸の進捗バー。長時間かかる解析・圧縮で「止まっているのか進んでいるのか」を
+        一目で分かるようにするためのもの。
+        値はバイト数ベース（ScanProgress.Fraction）なので、
+        44 件中 40 件終わってもバーが 30% ということが起きる。それが実態。
+    -->
+
+    <SolidColorBrush x:Key="TrackBrush" Color="#4A4A4A" />
+    <SolidColorBrush x:Key="FillBrush" Color="#4EB3F5" />
+    <SolidColorBrush x:Key="FillEdgeBrush" Color="#2E9AE0" />
+
+    <Style x:Key="GaugeStyle" TargetType="ProgressBar">
+        <Setter Property="Height" Value="22" />
+        <Setter Property="Foreground" Value="{StaticResource FillBrush}" />
+        <Setter Property="Background" Value="{StaticResource TrackBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Grid>
+                        <!-- 溝 -->
+                        <Border x:Name="PART_Track"
+                                CornerRadius="11"
+                                Background="{TemplateBinding Background}" />
+
+                        <!-- 伸びる部分。左端だけ丸めると短いときに不格好なので全周丸める -->
+                        <Border x:Name="PART_Indicator"
+                                HorizontalAlignment="Left"
+                                CornerRadius="11"
+                                Background="{TemplateBinding Foreground}"
+                                BorderBrush="{StaticResource FillEdgeBrush}"
+                                BorderThickness="0,0,0,1" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsIndeterminate" Value="True">
+                            <!-- 総量が分からない処理では塗りを隠し、文字で状況を伝える -->
+                            <Setter TargetName="PART_Indicator" Property="Opacity" Value="0" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

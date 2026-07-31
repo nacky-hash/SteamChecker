@@ -125,6 +125,54 @@ public class LibraryScannerTests
     }
 
     // -----------------------------------------------------------------
+    // 進捗はバイト数で測る（件数で測ると実態とかけ離れる）
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public void 進捗はバイト数の比で報告される()
+    {
+        var reports = new List<ScanProgress>();
+        var progress = new Progress<ScanProgress>(reports.Add);
+
+        new LibraryScanner(BuildLibrary(), timeProvider: new FixedTimeProvider(Now))
+            .Scan(SteamRoot, progress);
+
+        // Progress<T> は非同期なので、届いた分だけで検証する
+        Assert.All(reports, r => Assert.InRange(r.Fraction, 0.0, 1.0));
+
+        var last = reports.LastOrDefault();
+        if (last is not null)
+        {
+            Assert.Equal(170 * GiB, last.TotalBytes);   // 40+60+30+40
+        }
+    }
+
+    [Fact]
+    public void 件数が進んでもバイト比は容量に従う()
+    {
+        // 40GiB を終えた時点（4件中1件 = 25%）でも、
+        // バイト比は 40/170 = 23.5% にしかならない。これが実態
+        var p = new ScanProgress
+        {
+            Completed = 1,
+            Total = 4,
+            CompletedBytes = 40 * GiB,
+            TotalBytes = 170 * GiB,
+        };
+
+        Assert.InRange(p.Fraction, 0.23, 0.24);
+    }
+
+    [Fact]
+    public void バイト情報が無ければ件数で代用する()
+    {
+        // 旧来の呼び出し側や、サイズ 0 のライブラリでも進捗が壊れないこと
+        var p = new ScanProgress { Completed = 1, Total = 4 };
+
+        Assert.Equal(0.25, p.Fraction);
+    }
+
+    // -----------------------------------------------------------------
     // ReadTitles — 起動直後に「空の画面」を見せないための軽量な一覧
     // -----------------------------------------------------------------
 

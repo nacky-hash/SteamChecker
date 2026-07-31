@@ -10,6 +10,24 @@ public sealed record ScanProgress
     public required int Total { get; init; }
 
     public string? CurrentTitle { get; init; }
+
+    /// <summary>解析を終えたタイトルの論理サイズ合計。</summary>
+    public long CompletedBytes { get; init; }
+
+    /// <summary>解析対象の論理サイズ合計。</summary>
+    public long TotalBytes { get; init; }
+
+    /// <summary>
+    /// 進捗率（0.0〜1.0）。件数ではなくバイト数で測る。
+    ///
+    /// 1 タイトルあたりの所要時間は容量にほぼ比例し、
+    /// 117GB のタイトルと 0.2GB のタイトルでは数百倍違う。
+    /// 件数で測ったゲージは「44 件中 40 件終わったのに残り時間が減らない」という
+    /// 嘘をつくことになる。
+    /// </summary>
+    public double Fraction => TotalBytes > 0
+        ? Math.Clamp((double)CompletedBytes / TotalBytes, 0.0, 1.0)
+        : (Total > 0 ? Math.Clamp((double)Completed / Total, 0.0, 1.0) : 0.0);
 }
 
 public sealed record ScanResult
@@ -140,6 +158,11 @@ public sealed class LibraryScanner(
         var assessments = new List<GameAssessment>(apps.Count);
         var completed = 0;
 
+        // 進捗はバイト数で測る。所要時間は容量にほぼ比例するため、
+        // 件数ベースのゲージは実態とかけ離れる（ScanProgress.Fraction を参照）
+        var totalBytes = apps.Sum(a => a.SizeOnDisk);
+        long completedBytes = 0;
+
         foreach (var app in apps)
         {
             ct.ThrowIfCancellationRequested();
@@ -149,9 +172,12 @@ public sealed class LibraryScanner(
                 Completed = completed,
                 Total = apps.Count,
                 CurrentTitle = app.Name,
+                CompletedBytes = completedBytes,
+                TotalBytes = totalBytes,
             });
 
             completed++;
+            completedBytes += app.SizeOnDisk;
 
             if (!_fs.DirectoryExists(app.FullPath)) continue;
 
@@ -162,7 +188,13 @@ public sealed class LibraryScanner(
             assessments.Add(_advisor.Assess(app, profile, estimate, play, IsNtfs(app.FullPath)));
         }
 
-        progress?.Report(new ScanProgress { Completed = completed, Total = apps.Count });
+        progress?.Report(new ScanProgress
+        {
+            Completed = completed,
+            Total = apps.Count,
+            CompletedBytes = totalBytes,
+            TotalBytes = totalBytes,
+        });
 
         return new ScanResult
         {
