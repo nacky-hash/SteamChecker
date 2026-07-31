@@ -283,7 +283,7 @@ public class LibraryScannerTests
         var result = Scan(BuildLibrary());
         var game = result.Assessments.Single(a => a.Name == "Live Service");
 
-        Assert.Equal(AdviceKind.CompressWithWatcher, game.Advice);
+        Assert.Equal(AdviceKind.CompressUpdatesOften, game.Advice);
     }
 
     [Fact]
@@ -303,8 +303,8 @@ public class LibraryScannerTests
 
         var expected = result.Assessments
             .Where(a => a.Advice is AdviceKind.Compress
-                                 or AdviceKind.CompressWithWatcher
-                                 or AdviceKind.CompressWithCaution)
+                                 or AdviceKind.CompressUpdatesOften
+                                 or AdviceKind.CompressAntiCheat)
             .Sum(a => a.Estimate.EstimatedSavedBytes);
 
         Assert.Equal(expected, result.TotalEstimatedSavingBytes);

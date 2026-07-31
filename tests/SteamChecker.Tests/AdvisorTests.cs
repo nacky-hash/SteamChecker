@@ -158,14 +158,14 @@ public class AdvisorTests
     }
 
     [Fact]
-    public void 最近更新されたゲームは自動再圧縮を勧める()
+    public void 最近更新されたゲームは圧縮が解けやすいと分類する()
     {
         // WOF 圧縮は書き込みで解除される。更新が頻繁なゲームは
-        // 圧縮しっぱなしにできないので監視とセットでなければ意味がない
+        // 圧縮しても更新のたびに元に戻るので、その事実を分類として伝える
         var result = CreateAdvisor().Assess(
             App(daysSinceUpdate: 5), Profile(), Estimate(0.5), Played(3), true);
 
-        Assert.Equal(AdviceKind.CompressWithWatcher, result.Advice);
+        Assert.Equal(AdviceKind.CompressUpdatesOften, result.Advice);
         Assert.Contains(ReasonCode.RecentlyUpdated, result.Reasons);
     }
 
@@ -175,7 +175,7 @@ public class AdvisorTests
         var result = CreateAdvisor().Assess(
             App(), Profile(features: GameFeatures.EasyAntiCheat), Estimate(0.5), Played(3), true);
 
-        Assert.Equal(AdviceKind.CompressWithCaution, result.Advice);
+        Assert.Equal(AdviceKind.CompressAntiCheat, result.Advice);
         Assert.Contains(ReasonCode.AntiCheatDetected, result.Reasons);
     }
 

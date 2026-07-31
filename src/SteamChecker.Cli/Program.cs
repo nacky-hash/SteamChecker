@@ -132,8 +132,8 @@ void PrintReport(ScanResult result, bool showAll)
     var groups = new[]
     {
         (AdviceKind.Compress, ConsoleColor.Green),
-        (AdviceKind.CompressWithWatcher, ConsoleColor.Cyan),
-        (AdviceKind.CompressWithCaution, ConsoleColor.Yellow),
+        (AdviceKind.CompressUpdatesOften, ConsoleColor.Cyan),
+        (AdviceKind.CompressAntiCheat, ConsoleColor.Yellow),
         (AdviceKind.NotWorthCompressing, ConsoleColor.DarkGray),
         (AdviceKind.DoNotCompress, ConsoleColor.DarkYellow),
         (AdviceKind.AlreadyCompressed, ConsoleColor.DarkGray),

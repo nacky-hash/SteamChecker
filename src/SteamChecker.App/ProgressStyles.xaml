@@ -1,5 +1,15 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:SteamChecker.App">
+
+    <!--
+        分類ごとの色。
+        「やっていい」＝緑、「条件つき」＝青/橙、「やらなくていい」＝灰、「やるな」＝赤。
+        色だけに意味を持たせない（見出しの文字が主、色は補助）。
+        色覚多様性を考えて、緑と赤は明度差もつけている。
+    -->
+    <local:GroupColorConverter x:Key="GroupColor" />
+    <local:GroupAccentConverter x:Key="GroupAccent" />
 
     <!--
         角丸の進捗バー。長時間かかる解析・圧縮で「止まっているのか進んでいるのか」を

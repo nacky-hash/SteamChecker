@@ -98,6 +98,20 @@
                   SelectionMode="Extended"
                   SelectionChanged="OnSelectionChanged"
                   GridViewColumnHeader.Click="OnHeaderClick">
+            <!--
+                この起動中に圧縮・復元した行に印を付ける。
+                選択が外れても「何を実行したか」が画面に残るようにするため。
+            -->
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding TouchedThisSession}" Value="True">
+                            <Setter Property="FontWeight" Value="Bold" />
+                            <Setter Property="Background" Value="#E8F4FD" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ListView.ItemContainerStyle>
             <ListView.GroupStyle>
                 <GroupStyle>
                     <GroupStyle.HeaderTemplate>
@@ -106,13 +120,22 @@
                                 Run.Text は既定が TwoWay バインドで、読み取り専用の
                                 CollectionViewGroup.Name に書き戻そうとして例外になる。
                                 Mode=OneWay を必ず明示すること（2026-07-31 に実際に踏んだ）。
+
+                                色は分類の探しやすさのための補助。意味は文字が担う。
                             -->
-                            <TextBlock FontWeight="Bold"
-                                       FontSize="14"
-                                       Margin="0,10,0,4">
-                                <Run Text="{Binding Name, Mode=OneWay}" />
-                                <Run Text="{Binding ItemCount, StringFormat=（{0} 件）, Mode=OneWay}" />
-                            </TextBlock>
+                            <Border Margin="0,12,0,4"
+                                    Padding="10,6"
+                                    CornerRadius="4"
+                                    Background="{Binding Name, Converter={StaticResource GroupColor}, Mode=OneWay}"
+                                    BorderBrush="{Binding Name, Converter={StaticResource GroupAccent}, Mode=OneWay}"
+                                    BorderThickness="5,0,0,0">
+                                <TextBlock FontWeight="Bold"
+                                           FontSize="14"
+                                           Foreground="{Binding Name, Converter={StaticResource GroupAccent}, Mode=OneWay}">
+                                    <Run Text="{Binding Name, Mode=OneWay}" />
+                                    <Run Text="{Binding ItemCount, StringFormat=（{0} 件）, Mode=OneWay}" />
+                                </TextBlock>
+                            </Border>
                         </DataTemplate>
                     </GroupStyle.HeaderTemplate>
                 </GroupStyle>

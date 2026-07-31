@@ -16,11 +16,20 @@ namespace SteamChecker.Core.Presentation;
 /// </summary>
 public static class AdviceFormatter
 {
+    /// <summary>
+    /// 分類の見出し。
+    ///
+    /// 【文言の原則】ユーザーの語彙で、何が起きるかを直接書く。
+    /// 旧: 「圧縮可（要 自動再圧縮）」「圧縮可（要 確認）」
+    ///   - 「自動再圧縮」は存在しない機能（常駐監視）を指していた。無い機能を前提にした表示は虚偽
+    ///   - 「要 確認」は何を確認すべきか分からない
+    /// 作者自身が読めないラベルはユーザーには読めない（2026-07-31 の指摘、D-018）。
+    /// </summary>
     public static string Label(AdviceKind kind) => kind switch
     {
         AdviceKind.Compress => "圧縮推奨",
-        AdviceKind.CompressWithWatcher => "圧縮可（要 自動再圧縮）",
-        AdviceKind.CompressWithCaution => "圧縮可（要 確認）",
+        AdviceKind.CompressUpdatesOften => "更新が多い（圧縮が解けやすい）",
+        AdviceKind.CompressAntiCheat => "アンチチートあり（自己責任で）",
         AdviceKind.NotWorthCompressing => "圧縮しても効果小",
         AdviceKind.DoNotCompress => "圧縮非推奨",
         AdviceKind.AlreadyCompressed => "圧縮済み",
@@ -30,8 +39,8 @@ public static class AdviceFormatter
     public static string ShortLabel(AdviceKind kind) => kind switch
     {
         AdviceKind.Compress => "圧縮",
-        AdviceKind.CompressWithWatcher => "圧縮+監視",
-        AdviceKind.CompressWithCaution => "圧縮(確認)",
+        AdviceKind.CompressUpdatesOften => "更新多",
+        AdviceKind.CompressAntiCheat => "AC あり",
         AdviceKind.NotWorthCompressing => "効果小",
         AdviceKind.DoNotCompress => "非推奨",
         AdviceKind.AlreadyCompressed => "済",
@@ -62,7 +71,8 @@ public static class AdviceFormatter
             $"縮む量が {Bytes(context.Estimate.EstimatedSavedBytes)} にとどまります",
 
         ReasonCode.RecentlyUpdated =>
-            $"{context.DaysSinceUpdated} 日前に更新。圧縮は書き込みで解除されるため、更新のたびに再圧縮が必要です",
+            $"{context.DaysSinceUpdated} 日前に更新。ゲームが更新されると圧縮は自動的に解けます"
+            + "（また縮めたいときは、このツールをもう一度実行してください）",
 
         ReasonCode.UpdateStable =>
             context.DaysSinceUpdated is { } d

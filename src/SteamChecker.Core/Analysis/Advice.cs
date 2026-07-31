@@ -6,11 +6,15 @@ public enum AdviceKind
     /// <summary>圧縮推奨。効果が大きく、更新も落ち着いている。</summary>
     Compress,
 
-    /// <summary>圧縮可。ただし更新が頻繁なので自動再圧縮を併用すべき。</summary>
-    CompressWithWatcher,
+    /// <summary>
+    /// 圧縮できるが、更新が頻繁なので圧縮が解けやすい。
+    /// WOF 圧縮はファイルへの書き込みで解除されるため、ゲーム更新のたびに効果が失われる。
+    /// 常駐監視による自動再圧縮は**作らない**方針（D-018）。必要なら再実行してもらう。
+    /// </summary>
+    CompressUpdatesOften,
 
     /// <summary>圧縮可だがアンチチート検出。ユーザーの明示的な選択を必須にする。</summary>
-    CompressWithCaution,
+    CompressAntiCheat,
 
     /// <summary>圧縮しても効果が小さい。</summary>
     NotWorthCompressing,

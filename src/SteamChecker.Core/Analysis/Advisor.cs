@@ -138,14 +138,14 @@ public sealed class Advisor(AdvisorOptions? options = null, TimeProvider? timePr
         if (profile.Features.HasAnyAntiCheat())
         {
             reasons.Add(ReasonCode.AntiCheatDetected);
-            return Build(AdviceKind.CompressWithCaution);
+            return Build(AdviceKind.CompressAntiCheat);
         }
 
         // --- 更新頻度で圧縮の持続性が変わる ---
         if (daysSinceUpdated is { } d && d <= _options.RecentUpdateDays)
         {
             reasons.Add(ReasonCode.RecentlyUpdated);
-            return Build(AdviceKind.CompressWithWatcher);
+            return Build(AdviceKind.CompressUpdatesOften);
         }
 
         reasons.Add(ReasonCode.UpdateStable);

@@ -45,8 +45,8 @@ public sealed record ScanResult
 
     public long TotalEstimatedSavingBytes => Assessments
         .Where(a => a.Advice is AdviceKind.Compress
-                              or AdviceKind.CompressWithWatcher
-                              or AdviceKind.CompressWithCaution)
+                              or AdviceKind.CompressUpdatesOften
+                              or AdviceKind.CompressAntiCheat)
         .Sum(a => a.Estimate.EstimatedSavedBytes);
 
     /// <summary>削除候補（事実として提示するのみ。ツールは削除しない）の合計サイズ。</summary>
