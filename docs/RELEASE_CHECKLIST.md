@@ -13,12 +13,12 @@
 - [ ] スクリーンショットに実在のユーザー名・Steam ID・フルパスが写っていないこと（スクショ未作成）
 - [x] 「必ず N% 削減」「性能低下なし」といった表現が一切ないこと（2026-07-30 レビューで確認・修正済み）
 
-### 成果物の SHA-256（2026-07-31、実行結果の即時反映・色分け・ラベル変更の後）
+### 成果物の SHA-256（2026-08-01、部分解除の検出・アンチチート検証の後）
 
 ```
-SteamChecker.App.exe                0.3 MB  00F25635F9DEC5F5DEBC31D3532F7CE5BEA459DF244B0B9202B1BEFF4EE50C1F
-SteamChecker.App-selfcontained.exe 133.4 MB  32D09BD40F73B535EE894EE99C6DAE3930A76218276FBE6E7C928427E16397EA
-steamchecker.exe                   70.3 MB  415CFEB3A9BC258590B94FFDE8EB5B0064BC2BF74E2872C450B55598C3AFAEB9
+SteamChecker.App.exe                0.3 MB  A75958518CEF26BF86B44CF06D1AAD4361189826702363A43BE66C60894EA7BC
+SteamChecker.App-selfcontained.exe 133.4 MB  F4BAF284FD40E1A3D7C702D596D46CBAB7F2DA97DFE9D70C04F813BF2AA70781
+steamchecker.exe                   70.3 MB  9A0523A3B8E23571B6EE834F873C73DD4CD6D3724231819C48F40855BEA932F7
 ```
 
 ### リリース前に必ず通す検証（過去に 2 回落とし穴を踏んだ）
