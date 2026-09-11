@@ -10,7 +10,8 @@ Steam ライブラリを解析して、タイトルごとに「圧縮すべき�
 > - 圧縮は可逆です。「元に戻す」でいつでも解除できます
 > - CLI から圧縮する場合のみ `--experimental` が必要です（誤爆の質が違うため）
 >
-> 実機検証の結果は [docs/RESEARCH.md](docs/RESEARCH.md) を参照。
+> 実機検証の結果は [docs/RESEARCH.md](docs/RESEARCH.md)、
+> バージョンごとの変更点は [CHANGELOG.md](CHANGELOG.md) を参照。
 
 Windows の透過圧縮（WOF / `compact.exe /EXE:LZX`）を使う点は既存ツールと同じ。違うのは **判断を自動化する層** を持っていること。
 
