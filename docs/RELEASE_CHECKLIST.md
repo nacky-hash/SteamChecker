@@ -23,12 +23,13 @@ steamchecker.exe                   70.3 MB  9A0523A3B8E23571B6EE834F873C73DD4CD6
 
 ### リリース前に必ず通す検証（過去に 2 回落とし穴を踏んだ）
 
-- [ ] **隔離フォルダに exe 単体をコピーして起動する**
+- [x] **隔離フォルダに exe 単体をコピーして起動する**（2026-09-12: App 2 種・CLI とも確認）
       （2026-07-30: ネイティブ DLL 非同梱で、publish フォルダ外では起動しない不良品を配った）
-- [ ] **一覧にデータが表示された状態まで確認する。ウィンドウが出ただけで合格にしない**
+- [x] **一覧にデータが表示された状態まで確認する。ウィンドウが出ただけで合格にしない**
+      （2026-09-12: rows=47 まで確認）
       （2026-07-31: グループ見出しの TwoWay バインドで、行が描画された瞬間にクラッシュした。
       前回はリストが空のまま「起動 OK」と判断したため見逃した）
-- [ ] `%LOCALAPPDATA%\SteamChecker\crash.log` が生成されていないこと
+- [x] `%LOCALAPPDATA%\SteamChecker\crash.log` が生成されていないこと（2026-09-12 確認）
 
 自動化スクリプトは `tools/release_verify.ps1`（隔離起動 → 行数 → crash.log を一括確認）。
 
@@ -53,3 +54,34 @@ powershell -ExecutionPolicy Bypass -File tools/release_verify.ps1 -ReleaseDir <p
 
 **配布不可 / 開発者限定テスト可 / 少人数アルファ可 / 一般ベータ可** のいずれかを、
 根拠と残存リスクを添えて明示する。楽観的に判定しない。
+
+### 成果物の SHA-256（2026-09-12、D-020〜D-022 の後）
+
+```
+steamchecker.exe                    70.3 MB  768347B6152DCB8A9BD98D3D1378BA2D986D900CFCC035B1E3FF8913DFABD067
+SteamChecker.App.exe                 0.3 MB  7E9FA37E187FC772282EB5D3A9CDE14987EC95D5DA052C46C2C8F57EAEFEECEB
+SteamChecker.App-selfcontained.exe 133.4 MB  2EEA712696AFC89FF3755F09C84716341B58C1F7E5C2B0075C9DE58D34EB2B79
+```
+
+再現ビルド:
+
+```
+dotnet publish src/SteamChecker.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+dotnet publish src/SteamChecker.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+dotnet publish src/SteamChecker.App -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true
+```
+
+### 隔離検証の結果（2026-09-12）
+
+`tools/release_verify.ps1` を通した。**両方 PASS。**
+
+| 成果物 | 起動 | ウィンドウ | 行数 | crash.log | 判定 |
+|---|---:|---:|---:|---|---|
+| SteamChecker.App.exe | 1,888 ms | 1 | 47 | なし | PASS |
+| SteamChecker.App-selfcontained.exe | 2,234 ms | 1 | 47 | なし | PASS |
+
+CLI は GUI が無いため別途確認した。隔離フォルダに `steamchecker.exe` 単体を
+コピーして `--help` を実行し、正常終了（終了コード 0）することを確認。
+
+**行数 47 まで見ている**のが要点。前回は 44 件だった（タイトルが増えたため）。
+ウィンドウが出ただけで合格にせず、一覧が描画された状態を確認している。
