@@ -114,6 +114,67 @@ public sealed class OperationJournal(string filePath)
         return state.Where(kv => kv.Value).Select(kv => kv.Key).ToList();
     }
 
+    /// <summary>
+    /// 開始レコードの Operation につける接尾辞。
+    /// </summary>
+    public const string BeginSuffix = "-begin";
+
+    /// <summary>
+    /// 操作の開始を記録する。
+    ///
+    /// OS にプロセスを強制終了されると完了レコードは書かれない。
+    /// 「開始だけが残っている」＝中断された、と次回起動時に判定できるようにする。
+    /// メモリ不足で落とされたユーザーが、何が起きたか分からないまま
+    /// 放置されるのを防ぐのが目的（D-020）。
+    /// </summary>
+    public JournalEntry RecordBegin(
+        string operation,
+        long appId,
+        string name,
+        string path,
+        long bytesBefore,
+        CompressionAlgorithm? algorithm = null)
+    {
+        var entry = new JournalEntry
+        {
+            Timestamp = DateTimeOffset.UtcNow,
+            Operation = operation + BeginSuffix,
+            AppId = appId,
+            Name = name,
+            Path = path,
+            Algorithm = algorithm?.ToCompactArgument(),
+            BytesBefore = bytesBefore,
+            BytesAfter = bytesBefore,
+            Success = false,
+            DurationSeconds = 0,
+        };
+
+        Append(entry);
+        return entry;
+    }
+
+    /// <summary>
+    /// 開始だけ記録されて完了していない操作を返す（＝途中で落とされた操作）。
+    ///
+    /// パスごとに最後のエントリを見て、それが開始レコードなら未完了とみなす。
+    /// 同じパスを再実行して完了すれば通常の完了レコードで上書きされるため、
+    /// 一度報告したものが残り続けることはない。
+    /// </summary>
+    public IReadOnlyList<JournalEntry> UnfinishedOperations()
+    {
+        var last = new Dictionary<string, JournalEntry>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in ReadAll())
+        {
+            last[entry.Path] = entry;
+        }
+
+        return last.Values
+            .Where(e => e.Operation.EndsWith(BeginSuffix, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(e => e.Timestamp)
+            .ToList();
+    }
+
     public JournalEntry Record(
         string operation,
         long appId,

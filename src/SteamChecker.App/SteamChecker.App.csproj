@@ -26,6 +26,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      空きメモリ取得の P/Invoke を CLI と共有する。
+      Core に Windows 依存を置かない方針（AGENTS.md）のため Core には入れられず、
+      かといって同じ P/Invoke を 2 箇所に書くのは避けたいのでソースを共有する。
+    -->
+    <Compile Include="..\SteamChecker.Cli\SystemMemory.cs" Link="SystemMemory.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SteamChecker.Core\SteamChecker.Core.csproj" />
   </ItemGroup>
 

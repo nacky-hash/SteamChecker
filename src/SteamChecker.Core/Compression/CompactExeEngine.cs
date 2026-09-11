@@ -21,10 +21,35 @@ namespace SteamChecker.Core.Compression;
 ///       特に /U での WOF 圧縮解除は環境差があるため、
 ///       出荷前に「圧縮 → 解除 → 元のサイズに戻る」ことを必ず実測すること。
 /// </summary>
-public sealed class CompactExeEngine(IFileSystem fs, bool dryRun = false) : ICompressionEngine
+public sealed class CompactExeEngine(
+    IFileSystem fs,
+    bool dryRun = false,
+    Func<long>? availableMemoryProbe = null,
+    long memoryFloorBytes = CompactExeEngine.DefaultMemoryFloorBytes) : ICompressionEngine
 {
+    /// <summary>
+    /// 空きメモリがこれを割ったら自分から中断する既定値（1 GiB）。
+    ///
+    /// 100 GB 級のフォルダを圧縮するとファイルキャッシュでメモリが膨らみ、
+    /// 環境によっては OS やホストにプロセスを落とされる（2026-09-11 に実例）。
+    /// 落とされてからでは理由を出せないので、その手前で止まる。
+    /// </summary>
+    public const long DefaultMemoryFloorBytes = 1L << 30;
+
+    /// <summary>空きメモリを確認する間隔。</summary>
+    private static readonly TimeSpan MemoryCheckInterval = TimeSpan.FromSeconds(5);
+
     private readonly IFileSystem _fs = fs;
     private readonly bool _dryRun = dryRun;
+
+    /// <summary>
+    /// 空きメモリ（バイト）を返す。null なら監視しない。
+    /// Core に Windows 依存を持ち込まないため、実装はアプリ層から注入する
+    /// （レジストリ参照と同じ方針。AGENTS.md「アーキテクチャの制約」）。
+    /// </summary>
+    private readonly Func<long>? _memoryProbe = availableMemoryProbe;
+
+    private readonly long _memoryFloorBytes = memoryFloorBytes;
 
     public bool IsAvailable => OperatingSystem.IsWindows() && File.Exists(CompactPath);
 
@@ -80,6 +105,7 @@ public sealed class CompactExeEngine(IFileSystem fs, bool dryRun = false) : ICom
 
         var filesProcessed = 0;
         string? lastError = null;
+        var lowMemory = false;
 
         var psi = new ProcessStartInfo
         {
@@ -145,9 +171,14 @@ public sealed class CompactExeEngine(IFileSystem fs, bool dryRun = false) : ICom
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
+            // 監視は compact.exe の実行中だけ動かす。
+            // 前後のサイズ測定はメモリを圧迫しないので見る意味がない
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            _ = StartMemoryWatchdog(linked, () => lowMemory = true);
+
             try
             {
-                await process.WaitForExitAsync(ct).ConfigureAwait(false);
+                await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -166,6 +197,11 @@ public sealed class CompactExeEngine(IFileSystem fs, bool dryRun = false) : ICom
 
                 throw;
             }
+            finally
+            {
+                // 正常終了・異常終了のどちらでも監視タスクを確実に終わらせる
+                linked.Cancel();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -179,7 +215,11 @@ public sealed class CompactExeEngine(IFileSystem fs, bool dryRun = false) : ICom
                 BytesAfter = partial,
                 FilesProcessed = filesProcessed,
                 Duration = stopwatch.Elapsed,
-                ErrorMessage = "ユーザーによって中断されました",
+                ErrorMessage = lowMemory
+                    ? "空きメモリが不足したため中断しました。"
+                      + "ファイルは壊れていません（再実行すると続きから進みます）"
+                    : "ユーザーによって中断されました",
+                StoppedForLowMemory = lowMemory,
             };
         }
         catch (Exception ex)
@@ -200,6 +240,52 @@ public sealed class CompactExeEngine(IFileSystem fs, bool dryRun = false) : ICom
             Duration = stopwatch.Elapsed,
             ErrorMessage = lastError,
         };
+    }
+
+    /// <summary>
+    /// 空きメモリを定期的に確認し、下限を割ったらキャンセルを発火する。
+    ///
+    /// WOF はファイル単位で完結するため、どの時点で止めてもファイルは壊れない
+    /// （適用済み / 未適用のどちらかにしかならない）。
+    /// したがって「落とされる前に自分で止まる」のは安全な選択肢になる。
+    /// </summary>
+    private Task? StartMemoryWatchdog(CancellationTokenSource cts, Action onLowMemory)
+    {
+        if (_memoryProbe is null) return null;
+
+        return Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(MemoryCheckInterval, cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                long available;
+                try
+                {
+                    available = _memoryProbe();
+                }
+                catch (Exception)
+                {
+                    // 空きメモリを取得できない環境では監視をあきらめる。
+                    // 監視の失敗を理由に圧縮そのものを止めるのは本末転倒
+                    return;
+                }
+
+                if (available > 0 && available < _memoryFloorBytes)
+                {
+                    onLowMemory();
+                    cts.Cancel();
+                    return;
+                }
+            }
+        });
     }
 
     private long MeasurePhysicalBytes(string folderPath, CancellationToken ct)

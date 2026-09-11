@@ -55,6 +55,14 @@ public sealed record CompressionResult
     /// <summary>dry-run（実書き込みなし）の結果か。表示側は「完了」と偽らないこと。</summary>
     public bool WasDryRun { get; init; }
 
+    /// <summary>
+    /// 空きメモリの不足を検知して自分から中断したか。
+    ///
+    /// OS にプロセスごと強制終了されると理由を表示する機会すら無くなる。
+    /// その手前で自分から止まることで「なぜ止まったか」を伝えられる（D-020）。
+    /// </summary>
+    public bool StoppedForLowMemory { get; init; }
+
     public long BytesSaved => BytesBefore - BytesAfter;
 }
 

@@ -25,6 +25,11 @@ if (steamRoot is null)
     return 1;
 }
 
+// 前回の操作が完了していなければ、何よりも先に知らせる。
+// プロセスごと落とされた場合、その場では何も表示できないので、
+// 次の起動時が唯一の伝達機会になる（D-020）
+ReportUnfinishedOperations();
+
 return command switch
 {
     "scan" => RunScan(),
@@ -222,7 +227,14 @@ async Task<int> RunCompressAsync(bool compress)
         return 1;
     }
 
-    var engine = new CompactExeEngine(fs, dryRun: HasFlag("--dry-run"));
+    // 空きメモリを監視させる。100 GB 級の圧縮ではファイルキャッシュで
+    // メモリが膨らみ、OS やホストにプロセスを落とされることがある。
+    // 落とされてからでは理由を出せないので、その手前で自分から止まる（D-020）
+    var engine = new CompactExeEngine(
+        fs,
+        dryRun: HasFlag("--dry-run"),
+        availableMemoryProbe: SystemMemory.AvailableBytes,
+        memoryFloorBytes: ParseMemoryFloor(GetOption("--memory-floor-mb")));
 
     if (!engine.IsAvailable && !HasFlag("--dry-run"))
     {
@@ -339,6 +351,17 @@ async Task<int> RunCompressAsync(bool compress)
         Console.WriteLine($"  サイズ    {AdviceFormatter.Bytes(profile.TotalLogicalBytes)}");
         Console.WriteLine($"  見込み    {AdviceFormatter.Bytes(estimate.EstimatedSavedBytes)} 削減 "
                           + $"({estimate.SavedFraction:P0}){(estimate.Measured ? " ※実測" : " ※推定")}");
+        Console.WriteLine($"  所要目安  {FormatDurationRange(profile.TotalLogicalBytes)}");
+
+        // 大きいタイトルほど中断に遭遇しやすい。何が起きるかを先に伝えておく
+        if (profile.TotalLogicalBytes >= 10L * 1024 * 1024 * 1024)
+        {
+            Console.WriteLine();
+            Console.WriteLine("  時間がかかります。途中で中断されてもファイルは壊れません。");
+            Console.WriteLine("  圧縮はファイル単位で完結するため、止まった時点で");
+            Console.WriteLine("  「圧縮済み」か「未圧縮」のどちらかにしかなりません。");
+            Console.WriteLine("  もう一度実行すると、続きから進みます。");
+        }
 
         if (profile.Features.HasFlag(GameFeatures.DirectStorage))
         {
@@ -368,6 +391,19 @@ async Task<int> ExecuteAsync(
 {
     var algorithm = ParseAlgorithm(GetOption("--algorithm"));
     var lastReport = 0;
+
+    // 実行前に開始を記録する。完了レコードが書かれないまま終わっていれば、
+    // 次回起動時に「中断された」と判定できる（D-020）
+    try
+    {
+        journal.RecordBegin(
+            compress ? "compress" : "decompress",
+            appId, name, path, bytesBefore: 0, compress ? algorithm : null);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        Warn($"開始を記録できませんでした: {ex.Message}");
+    }
 
     var progress = new Progress<CompressionProgress>(p =>
     {
@@ -412,6 +448,18 @@ async Task<int> ExecuteAsync(
 
     if (!result.Success)
     {
+        // メモリ不足で自分から止まった場合は「失敗」ではない。
+        // ここまでの圧縮は有効で、再実行すれば続きから進む
+        if (result.StoppedForLowMemory)
+        {
+            Warn(result.ErrorMessage ?? "空きメモリが不足したため中断しました。");
+            Console.WriteLine();
+            Console.WriteLine($"  ここまでの結果  {AdviceFormatter.Bytes(result.BytesBefore)} → "
+                              + $"{AdviceFormatter.Bytes(result.BytesAfter)}");
+            Console.WriteLine("  メモリを使っているアプリを閉じてから、同じコマンドをもう一度実行してください。");
+            return 2;
+        }
+
         Error($"失敗: {result.ErrorMessage}");
         return 1;
     }
@@ -450,6 +498,17 @@ int RunHistory()
 
     foreach (var e in entries)
     {
+        // 開始レコードは「失敗」ではなく「完了レコードがまだ無い」だけ。
+        // NG と並べると壊れたかのように読めるので分けて出す
+        if (e.Operation.EndsWith(OperationJournal.BeginSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            var operation = e.Operation[..^OperationJournal.BeginSuffix.Length];
+            Console.WriteLine(
+                $"{e.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm}  --  "
+                + $"{operation,-10} {e.Name}  （未完了）");
+            continue;
+        }
+
         var status = e.Success ? "OK  " : "NG  ";
         var delta = e.BytesBefore - e.BytesAfter;
 
@@ -478,6 +537,81 @@ int UnknownCommand(string name)
     return 1;
 }
 
+// =====================================================================
+// D-020: 中断を次回に伝える / 落とされる前に自分で止まる
+// =====================================================================
+
+/// <summary>
+/// 前回の操作が完了していなければ知らせる。
+///
+/// OS やホストにプロセスごと落とされた場合、その場では何も表示できない。
+/// 次に起動したときが、ユーザーが気づける唯一の機会になる。
+/// </summary>
+void ReportUnfinishedOperations()
+{
+    IReadOnlyList<JournalEntry> unfinished;
+
+    try
+    {
+        var probe = new OperationJournal(GetOption("--journal") ?? OperationJournal.DefaultPath);
+        unfinished = probe.UnfinishedOperations();
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        // 記録を読めないこと自体で本体を止めない。ここは通知のためだけの経路
+        return;
+    }
+
+    if (unfinished.Count == 0) return;
+
+    Console.WriteLine();
+    Warn($"前回の操作が完了していません（{unfinished.Count} 件）。");
+
+    foreach (var entry in unfinished)
+    {
+        var verb = entry.Operation.StartsWith("compress", StringComparison.OrdinalIgnoreCase)
+            ? "圧縮"
+            : "復元";
+        Console.WriteLine($"  · {entry.Name} の{verb}（{entry.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm}）");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("  ファイルは壊れていません。圧縮はファイル単位で完結するため、");
+    Console.WriteLine("  途中で止まっても「圧縮済み」か「未圧縮」のどちらかにしかなりません。");
+    Console.WriteLine("  同じ操作をもう一度実行すると、続きから進みます。");
+    Console.WriteLine();
+}
+
+/// <summary>
+/// 圧縮にかかる時間の目安。
+/// 2026-09-11 の実測（6 タイトル / 128 GB）で 23〜70 MB/s と幅があったため、
+/// 範囲で示す。単一の値で断定しない。
+/// </summary>
+string FormatDurationRange(long bytes)
+{
+    const double SlowBytesPerSecond = 23.0 * 1024 * 1024;
+    const double FastBytesPerSecond = 70.0 * 1024 * 1024;
+
+    static string Format(double seconds) => seconds switch
+    {
+        < 60 => "1 分未満",
+        < 3600 => $"{seconds / 60:F0} 分",
+        _ => $"{seconds / 3600:F1} 時間",
+    };
+
+    var fastest = Format(bytes / FastBytesPerSecond);
+    var slowest = Format(bytes / SlowBytesPerSecond);
+
+    // 「1 分未満〜1 分未満」のような無意味な範囲にしない
+    return fastest == slowest ? fastest : $"{fastest}〜{slowest}";
+}
+
+/// <summary>空きメモリの下限（バイト）。指定が無ければ既定値。</summary>
+long ParseMemoryFloor(string? value) =>
+    long.TryParse(value, out var megabytes) && megabytes >= 0
+        ? megabytes * 1024 * 1024
+        : CompactExeEngine.DefaultMemoryFloorBytes;
+
 void PrintUsage()
 {
     Console.WriteLine("""
@@ -502,6 +636,7 @@ void PrintUsage()
           --journal <パス>   操作ログの保存先を変える
           --dry-run          実際には書き込まない
           --assume-ntfs      ファイルシステム判定を飛ばす（Windows 以外での動作確認用）
+          --memory-floor-mb <数>  空きメモリがこれを割ったら圧縮を中断する（既定 1024）
 
         scan の閾値調整:
           --min-saved-mb <数>       この量未満しか空かないなら「効果小」（既定 1024）

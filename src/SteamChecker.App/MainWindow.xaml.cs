@@ -129,6 +129,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Loaded += OnLoaded;
+
+        // 一覧を出したあとで、前回の中断を知らせる（登録順に実行される）
+        Loaded += (_, _) => ReportUnfinishedOperations();
+
         _ticker.Tick += (_, _) => ProgressEta.Text = EstimateRemaining(_lastFraction);
     }
 
@@ -139,6 +143,49 @@ public partial class MainWindow : Window
     // 「起動したのか分からない」という最悪の第一印象になる。
     // manifest の読み取りだけなら実測 50〜400ms で済むので先に出す（D-016）。
     // =================================================================
+
+    /// <summary>
+    /// 前回の操作が完了していなければ知らせる（D-020）。
+    ///
+    /// メモリ不足などでプロセスごと落とされると、GUI は何も表示せずに消える。
+    /// ユーザーから見れば「突然終わった」だけで、ファイルが無事かも分からない。
+    /// 次に起動したときが、それを伝えられる唯一の機会になる。
+    /// </summary>
+    private void ReportUnfinishedOperations()
+    {
+        IReadOnlyList<JournalEntry> unfinished;
+
+        try
+        {
+            unfinished = new OperationJournal(OperationJournal.DefaultPath).UnfinishedOperations();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 記録を読めないこと自体で起動を妨げない
+            return;
+        }
+
+        if (unfinished.Count == 0) return;
+
+        var lines = unfinished.Select(entry =>
+        {
+            var verb = entry.Operation.StartsWith("compress", StringComparison.OrdinalIgnoreCase)
+                ? "圧縮"
+                : "復元";
+            return $"・{entry.Name} の{verb}（{entry.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm}）";
+        });
+
+        MessageBox.Show(
+            this,
+            "前回の操作が完了していません。\n\n"
+            + string.Join("\n", lines)
+            + "\n\nファイルは壊れていません。圧縮はファイル単位で完結するため、\n"
+            + "途中で止まっても「圧縮済み」か「未圧縮」のどちらかにしかなりません。\n\n"
+            + "同じ操作をもう一度実行すると、続きから進みます。",
+            "前回の操作について",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -616,7 +663,9 @@ public partial class MainWindow : Window
         if (answer != MessageBoxResult.OK) return;
 
         // --- 逐次実行 ---
-        var engine = new CompactExeEngine(_fs);
+        // 空きメモリを監視させる。大容量タイトルの圧縮中にメモリが枯渇して
+        // プロセスごと落とされると、GUI では「突然消えた」としか見えない（D-020）
+        var engine = new CompactExeEngine(_fs, availableMemoryProbe: SystemMemory.AvailableBytes);
         var journal = new OperationJournal(OperationJournal.DefaultPath);
 
         _operationCts = new CancellationTokenSource();
@@ -659,6 +708,20 @@ public partial class MainWindow : Window
                     }
                 });
 
+                // 実行前に開始を記録する。完了レコードが書かれないまま終わっていれば、
+                // 次回起動時に「中断された」と判定できる（D-020）
+                try
+                {
+                    journal.RecordBegin(
+                        compress ? "compress" : "decompress",
+                        app.AppId, app.Name, app.FullPath, bytesBefore: 0,
+                        compress ? CompressionAlgorithm.Lzx : null);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    failures.Add($"{app.Name}: 開始を記録できませんでした ({ex.Message})");
+                }
+
                 var result = compress
                     ? await engine.CompressAsync(app.FullPath, CompressionAlgorithm.Lzx, progress, _operationCts.Token)
                     : await engine.DecompressAsync(app.FullPath, progress, _operationCts.Token);
@@ -684,6 +747,10 @@ public partial class MainWindow : Window
                 else
                 {
                     failures.Add($"{app.Name}: {result.ErrorMessage}");
+
+                    // メモリ不足はこのタイトル固有の事情ではない。
+                    // 残りを続けても同じ結果になるので、ここで打ち切る
+                    if (result.StoppedForLowMemory) break;
                 }
 
                 doneBytes += appBytes;
