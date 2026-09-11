@@ -17,7 +17,7 @@ D-021（圧縮の到達点は記録から引く）を実装。**
 - リリース: **v0.2.0-alpha**（Pre-release / 2026-09-12 公開。D-020〜D-022 を反映）
   - 成果物 3 点＋SHA256SUMS.txt を添付。隔離検証は 3 点とも PASS（rows=47 / crash なし）
   - 前: v0.1.0-alpha（2026-07-30）
-- 最新コミット: `23cc2e6`（origin/main と一致）
+- 作業ツリーは clean、origin/main と一致（2026-09-12 時点）
 - テスト: **163 件**、両ランナー（xUnit / 依存ゼロ TestRunner）で全て成功
 - 直近のセッション ID: `9ee94bcc-7af3-4607-9134-21fabca8ad8e`（2026-09-11 / 再チェック）
 - その前: `a2cc48c6-839c-4b16-a3da-cf0605498573`（2026-07-30〜31 / 公開まで）
@@ -62,8 +62,10 @@ Slots & Daggers は検証で圧縮→復元したので**元の状態**（219 MB
 
 ```powershell
 cd C:\Users\nakan\dev\SteamChecker
-git log --oneline -3          # 23cc2e6 が最新なら、この STATE.md は最新
-dotnet test -c Release        # 149 件success を確認
+git log -1 --date=short --format="%ad %s"   # このファイルの「最終更新」より
+                                            # 後のコミットがあれば STATE.md が
+                                            # 追いついていない可能性がある
+dotnet test -c Release        # 165 件 success を確認
 ```
 
 セッションが CCD の一覧から消えていても履歴は無事
