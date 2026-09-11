@@ -94,6 +94,6 @@ dotnet test -c Release        # 149 件success を確認
 配布前は必ずこれを通すこと:
 
 ```powershell
-# publish 後に実行。windows=1 / rows=44 / no crash が全部揃えば合格
-powershell -ExecutionPolicy Bypass -File tools\release_verify.ps1
+# publish 後に実行。各行の末尾に PASS が出れば合格（rows=0 は不合格）
+powershell -ExecutionPolicy Bypass -File tools/release_verify.ps1 -ReleaseDir <publish先> -MinRows 1
 ```

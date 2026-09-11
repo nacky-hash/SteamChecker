@@ -30,7 +30,13 @@ steamchecker.exe                   70.3 MB  9A0523A3B8E23571B6EE834F873C73DD4CD6
       前回はリストが空のまま「起動 OK」と判断したため見逃した）
 - [ ] `%LOCALAPPDATA%\SteamChecker\crash.log` が生成されていないこと
 
-自動化スクリプトの例は `scratchpad/release_verify.ps1`（隔離起動 → 行数 → crash.log を一括確認）。
+自動化スクリプトは `tools/release_verify.ps1`（隔離起動 → 行数 → crash.log を一括確認）。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/release_verify.ps1 -ReleaseDir <publish先> -MinRows 1
+```
+
+各行の末尾に `PASS` が出れば合格。`rows=0` は**不合格**（ウィンドウだけ出て中身が無い状態）。
 
 ## Phase 1（圧縮実行）を出すまで
 

@@ -1,12 +1,21 @@
 # Pre-release gate: run each published exe ISOLATED (copied alone to a new dir)
 # and confirm a window appears with rows and no error dialog. ASCII source.
+param(
+    # Directory holding the published exe files to verify.
+    [Parameter(Mandatory = $true)][string]$ReleaseDir,
+
+    # Minimum rows that must be rendered. A window with zero rows is NOT a pass:
+    # a crash while drawing rows was missed exactly that way once.
+    [int]$MinRows = 1
+)
+
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $AE = [System.Windows.Automation.AutomationElement]
 $TS = [System.Windows.Automation.TreeScope]
 function Cond($p, $v) { New-Object System.Windows.Automation.PropertyCondition($p, $v) }
 
-$rel = "C:\Users\nakan\AppData\Local\Temp\claude\C--Users-nakan-dev-SteamChecker\a2cc48c6-839c-4b16-a3da-cf0605498573\scratchpad\release_v011"
+$rel = (Resolve-Path $ReleaseDir).Path
 $log = "$env:LOCALAPPDATA\SteamChecker\crash.log"
 
 function Verify([string]$name) {
@@ -43,8 +52,10 @@ function Verify([string]$name) {
 
     if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 
-    $crash = if (Test-Path $log) { "CRASH LOGGED" } else { "no crash" }
-    "{0,-36} {1,7:N0} ms  windows={2}  rows={3}  {4}" -f $name, $shown, $windows, $rows, $crash
+    $crashed = Test-Path $log
+    $crash = if ($crashed) { "CRASH LOGGED" } else { "no crash" }
+    $verdict = if ($windows -ge 1 -and $rows -ge $MinRows -and -not $crashed) { "PASS" } else { "FAIL" }
+    "{0,-36} {1,7:N0} ms  windows={2}  rows={3}  {4}  {5}" -f $name, $shown, $windows, $rows, $crash, $verdict
 
     cmd /c rd /s /q "$iso" | Out-Null
 }
@@ -52,4 +63,4 @@ function Verify([string]$name) {
 "=== isolated release verification ==="
 Verify "SteamChecker.App.exe"
 Verify "SteamChecker.App-selfcontained.exe"
-"=== done (windows=1 and rows=44 and 'no crash' means OK) ==="
+"=== done: PASS needs windows>=1, rows>=$MinRows, no crash ==="
