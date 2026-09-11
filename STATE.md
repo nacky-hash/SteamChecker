@@ -2,27 +2,30 @@
 
 再開するときは「**再開して**」の一言でよい。このファイルから復帰する。
 
-最終更新: 2026-08-01
+最終更新: 2026-09-11
 
 ---
 
 ## 現在地（一言で）
 
-**公開済み。知人に配れる状態。未コミット・未 push はゼロ。**
+**公開済み。知人に配れる状態。**
+**2026-09-11 に 6 週間ぶりの再チェックを実施し、6 タイトル / 28.1 GB を追加削減。**
 
 - リポジトリ: https://github.com/nacky-hash/SteamChecker （Public / MIT）
 - リリース: v0.1.0-alpha（Pre-release）
 - 最新コミット: `23cc2e6`（origin/main と一致）
 - テスト: 149 件、両ランナー（xUnit / 依存ゼロ TestRunner）で全て成功
-- このセッションの ID: `a2cc48c6-839c-4b16-a3da-cf0605498573`
+- 直近のセッション ID: `9ee94bcc-7af3-4607-9134-21fabca8ad8e`（2026-09-11 / 再チェック）
+- その前: `a2cc48c6-839c-4b16-a3da-cf0605498573`（2026-07-30〜31 / 公開まで）
 
 ## ユーザーの環境で実施済み
 
 | | |
 |---|---|
-| 圧縮したタイトル | theHunter / Sniper Elite 5 / Jotunnslayer / Shape of Dreams（計 78.2 GB 削減） |
+| 圧縮したタイトル（7/30〜31） | theHunter / Sniper Elite 5 / Jotunnslayer / Shape of Dreams（計 78.2 GB 削減） |
+| 圧縮したタイトル（9/11） | Sniper Elite: Resistance / R.I.P. / The Spell Brigade / Yet Another Zombie Survivors / Black Jacket / Monsters are Coming!（計 28.1 GB 削減） |
 | 削除したタイトル | Grand Theft Auto V Enhanced（96 GB） |
-| C: の空き | 479 GB → 608 GB |
+| C: の空き | 479 → 608 GB（8/1） / 445 → 465 GB（9/11。6 週間で 163 GB 減っていた分を一部回収） |
 | 動作確認 | Sniper Elite 5（EasyAntiCheat）を圧縮したまま起動・プレイして正常。映像音声とも問題なし |
 
 Slots & Daggers は検証で圧縮→復元したので**元の状態**（219 MB、未圧縮）。
@@ -36,6 +39,11 @@ Slots & Daggers は検証で圧縮→復元したので**元の状態**（219 MB
    - BattlEye 系のアンチチートは未確認（EasyAntiCheat のみ n=1 で確認済み）
    - 複数ライブラリ（D: や外付け）を持つ環境での動作は未確認
    - スクリーンショットを README に未掲載（実名・パスの写り込みに注意）
+   - **「圧縮済み」欄の「圧縮見込み」表示**が実現済み削減量に見える
+     （2026-09-11 発見。候補には出ないので実害なし。`docs/STATUS.md` 末尾）
+   - **圧縮率推定が R.I.P. で -13.2pt 外れた**（想定は ±6pt）。再発するか要観察
+   - 107 GB 級の圧縮はメモリを圧迫する。エージェント経由ではなく
+     ユーザーのシェルで直接実行したほうが確実（9/11 に中断の実例）
 3. **やらないと決めたこと**（蒸し返さない）
    - 常駐監視・自動再圧縮（D-018）。容量を空けるツールが常駐するのは本末転倒
    - ReadyToRun（D-017）。実測したら起動が遅くなった
