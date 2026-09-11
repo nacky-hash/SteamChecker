@@ -14,7 +14,9 @@
 D-021（圧縮の到達点は記録から引く）を実装。**
 
 - リポジトリ: https://github.com/nacky-hash/SteamChecker （Public / MIT）
-- リリース: v0.1.0-alpha（Pre-release）
+- リリース: **v0.2.0-alpha**（Pre-release / 2026-09-12 公開。D-020〜D-022 を反映）
+  - 成果物 3 点＋SHA256SUMS.txt を添付。隔離検証は 3 点とも PASS（rows=47 / crash なし）
+  - 前: v0.1.0-alpha（2026-07-30）
 - 最新コミット: `23cc2e6`（origin/main と一致）
 - テスト: **163 件**、両ランナー（xUnit / 依存ゼロ TestRunner）で全て成功
 - 直近のセッション ID: `9ee94bcc-7af3-4607-9134-21fabca8ad8e`（2026-09-11 / 再チェック）
@@ -37,7 +39,9 @@ Slots & Daggers は検証で圧縮→復元したので**元の状態**（219 MB
 
 1. **知人からの反応待ち。** 「動かない」と言われたら
    `%LOCALAPPDATA%\SteamChecker\crash.log` を送ってもらう。
-   「見込みと実際が違う」なら ±6pt までは想定内（`docs/RESEARCH.md` §6）
+   「見込みと実際が違う」なら数 pt は想定内
+   （実圧縮 16 タイトルで平均 2.2pt / 最大 4.9pt。`docs/RESEARCH.md`）。
+   **v0.2.0-alpha を案内すること**（v0.1.0-alpha には中断時の通知が無い）
 2. **残っている未確認**（急がない）
    - BattlEye 系のアンチチートは未確認（EasyAntiCheat のみ n=1 で確認済み）
    - 複数ライブラリ（D: や外付け）を持つ環境での動作は未確認
