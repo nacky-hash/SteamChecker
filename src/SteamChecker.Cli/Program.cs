@@ -450,7 +450,14 @@ async Task<int> ExecuteAsync(
 
     try
     {
-        journal.Record(compress ? "compress" : "decompress", appId, name, result, compress ? algorithm : null);
+        // dry-run は「compress」として記録しない。
+        // 何も書き込んでいないので BytesAfter は論理サイズのままであり、
+        // これを圧縮の到達点として扱うと「もう縮まない」と誤判定する（D-021）。
+        // 一括復元の対象（CompressedPaths）にも混ざる
+        var operation = compress ? "compress" : "decompress";
+        if (result.WasDryRun) operation += "-dryrun";
+
+        journal.Record(operation, appId, name, result, compress ? algorithm : null);
     }
     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
     {

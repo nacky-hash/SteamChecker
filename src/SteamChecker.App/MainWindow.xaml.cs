@@ -757,7 +757,13 @@ public partial class MainWindow : Window
 
                 try
                 {
-                    journal.Record(compress ? "compress" : "decompress", app.AppId, app.Name, result,
+                    // dry-run を「compress」として記録しない（CLI と同じ理由。D-021）。
+                    // GUI に dry-run の経路は無いが、エンジンの既定が変わっても
+                    // 記録が壊れないようにここでも判定しておく
+                    var operation = compress ? "compress" : "decompress";
+                    if (result.WasDryRun) operation += "-dryrun";
+
+                    journal.Record(operation, app.AppId, app.Name, result,
                         compress ? CompressionAlgorithm.Lzx : null);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

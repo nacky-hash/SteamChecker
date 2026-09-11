@@ -122,27 +122,50 @@ public class OperationJournalTests : IDisposable
     public void 圧縮しきった実績を到達点として返す()
     {
         var journal = new OperationJournal(_path);
-        journal.Record("compress", 1, "Game A", Result(@"C:\games", 1000, 400));
+        journal.Record("compress", 1, "Game A", Result(@"C:\games\a", 1000, 400));
 
-        Assert.Equal(400, journal.CompressedFloors()[@"C:\games"]);
+        Assert.Equal(400, journal.CompressedFloors()[@"C:\games\a"]);
     }
 
     [Fact]
     public void 複数回の記録があれば最小の到達点を採る()
     {
         var journal = new OperationJournal(_path);
-        journal.Record("compress", 1, "Game A", Result(@"C:\games", 1000, 500));
-        journal.Record("compress", 1, "Game A", Result(@"C:\games", 900, 400));
+        journal.Record("compress", 1, "Game A", Result(@"C:\games\a", 1000, 500));
+        journal.Record("compress", 1, "Game A", Result(@"C:\games\a", 900, 400));
 
         // 一度でもそこまで縮んだのなら、その値には到達できる
-        Assert.Equal(400, journal.CompressedFloors()[@"C:\games"]);
+        Assert.Equal(400, journal.CompressedFloors()[@"C:\games\a"]);
+    }
+
+    [Fact]
+    public void dryrunの記録は到達点に数えない()
+    {
+        var journal = new OperationJournal(_path);
+
+        // dry-run は何も書き込まないので BytesAfter は論理サイズのまま。
+        // これを到達点として扱うと「もう縮まない（残量ゼロ）」と誤判定し、
+        // 実際には縮むタイトルを「圧縮しても無駄」と表示してしまう
+        journal.Record("compress-dryrun", 1, "Game A", Result(@"C:\games\a", 1000, 1000));
+
+        Assert.Empty(journal.CompressedFloors());
+    }
+
+    [Fact]
+    public void dryrunの記録を圧縮済みパスに数えない()
+    {
+        var journal = new OperationJournal(_path);
+        journal.Record("compress-dryrun", 1, "Game A", Result(@"C:\games\a", 1000, 1000));
+
+        // 数えると、一括復元の対象に「実際には圧縮していないフォルダ」が混ざる
+        Assert.Empty(journal.CompressedPaths());
     }
 
     [Fact]
     public void 失敗した圧縮は到達点に数えない()
     {
         var journal = new OperationJournal(_path);
-        journal.Record("compress", 1, "Game A", Result(@"C:\games", 1000, 900, success: false));
+        journal.Record("compress", 1, "Game A", Result(@"C:\games\a", 1000, 900, success: false));
 
         Assert.Empty(journal.CompressedFloors());
     }
@@ -151,7 +174,7 @@ public class OperationJournalTests : IDisposable
     public void 復元の記録は到達点に数えない()
     {
         var journal = new OperationJournal(_path);
-        journal.Record("decompress", 1, "Game A", Result(@"C:\games", 400, 1000));
+        journal.Record("decompress", 1, "Game A", Result(@"C:\games\a", 400, 1000));
 
         // 復元後のサイズを「圧縮の到達点」と取り違えると、残量をゼロと誤判定する
         Assert.Empty(journal.CompressedFloors());
