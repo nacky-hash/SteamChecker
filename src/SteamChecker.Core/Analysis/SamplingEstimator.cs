@@ -240,13 +240,33 @@ public sealed class SamplingEstimator(
 
         // 2. 確定した対象を並列に実測する。
         //    Brotli の計算が支配的で、合計は可換なので結果は順序に依存しない。
-        //    合成は「読んだバイト数」加重（≒ファイル間の等重みに近い）。
-        //    ファイルの論理サイズで加重する案も実測で比較したが、
+        //
+        //    合成は既定で「読んだバイト数」加重（≒ファイル間の等重みに近い）。
+        //    ファイルの論理サイズで全面的に加重する案も実測で比較したが、
         //    少数の巨大ファイルの個体差が全体を支配して分散が増え、
-        //    既定予算では誤差がむしろ悪化した（docs/RESEARCH.md §6）
+        //    既定予算では誤差がむしろ悪化した（docs/RESEARCH.md §6）。
+        //
+        //    ただし 1 ファイルがグループの大半を占める場合は話が別で、
+        //    読んだバイト数加重だと実態と重みが逆転する。
+        //    実例: R.I.P. の .pak は 1 本 (12.3GB) がグループの 99.5% を占めるのに、
+        //    上限 16MB しか読まれないため重みが 2〜3 割に落ち、全部読まれる
+        //    小さな .pak（よく縮む）が全体を支配して 12pt 過大に出した。
+        //    この構成では「その 1 本の実測」がほぼそのまま答えなので、
+        //    サイズ加重に切り替える（D-021 の調査で判明）。
+        var totalSize = selection.Sum(s => s.Size);
+        var largestShare = totalSize > 0
+            ? (double)selection.Max(s => s.Size) / totalSize
+            : 0;
+        var dominatedBySingleFile = largestShare >= _options.DominantFileShare;
+
         long totalOriginal = 0;
         long totalCompressed = 0;
         var fileCount = 0;
+
+        // サイズ加重用（double は Interlocked で足せないので lock でまとめる）
+        var weightGate = new Lock();
+        double sizeWeightedSum = 0;
+        long sizeWeightTotal = 0;
 
         Parallel.ForEach(
             selection,
@@ -266,6 +286,15 @@ public sealed class SamplingEstimator(
                     Interlocked.Add(ref totalOriginal, read);
                     Interlocked.Add(ref totalCompressed, (long)(read * ratio));
                     Interlocked.Increment(ref fileCount);
+
+                    if (dominatedBySingleFile)
+                    {
+                        lock (weightGate)
+                        {
+                            sizeWeightedSum += ratio * item.Size;
+                            sizeWeightTotal += item.Size;
+                        }
+                    }
                 }
 
                 return buffer;
@@ -274,7 +303,11 @@ public sealed class SamplingEstimator(
 
         if (totalOriginal <= 0) return null;
 
-        return ((double)totalCompressed / totalOriginal, totalOriginal, fileCount);
+        var ratioOfGroup = dominatedBySingleFile && sizeWeightTotal > 0
+            ? sizeWeightedSum / sizeWeightTotal
+            : (double)totalCompressed / totalOriginal;
+
+        return (ratioOfGroup, totalOriginal, fileCount);
     }
 
     /// <summary>
@@ -417,4 +450,15 @@ public sealed record SamplingOptions
     /// 一度も見ない事故が起きる（docs/RESEARCH.md §6 の Slots &amp; Daggers 事例）。
     /// </summary>
     public long BreadthBytesPerFile { get; init; } = 1024 * 1024;
+
+    /// <summary>
+    /// 1 ファイルがグループのこの割合以上を占めるとき、合成を
+    /// 「読んだバイト数」加重からファイルサイズ加重に切り替える。
+    ///
+    /// 通常は読んだバイト数加重のほうが分散が小さく精度が良い（RESEARCH §6）。
+    /// だが 1 本が大半を占める構成では、上限までしか読まれない巨大ファイルの
+    /// 重みが実態より大幅に軽くなり、少数の小ファイルが全体を決めてしまう。
+    /// その場合だけ切り替える。1.0 にすれば従来どおりの挙動に戻る。
+    /// </summary>
+    public double DominantFileShare { get; init; } = 0.5;
 }
