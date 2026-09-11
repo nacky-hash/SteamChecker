@@ -130,8 +130,15 @@ public partial class MainWindow : Window
         InitializeComponent();
         Loaded += OnLoaded;
 
-        // 一覧を出したあとで、前回の中断を知らせる（登録順に実行される）
-        Loaded += (_, _) => ReportUnfinishedOperations();
+        // 前回の中断は、一覧が「描画されてから」知らせる。
+        //
+        // Loaded ハンドラの中で MessageBox を出すと、WPF がウィンドウを描く前に
+        // モーダルが割り込み、真っ白な画面にダイアログだけが出る。
+        // ユーザーには「何も読み込めていないのにエラーが出た」ように見え、
+        // 起動直後に一覧を見せる D-016 の狙いを潰してしまう（2026-09-12 に実機で確認）。
+        Loaded += (_, _) => Dispatcher.BeginInvoke(
+            new Action(ReportUnfinishedOperations),
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
         _ticker.Tick += (_, _) => ProgressEta.Text = EstimateRemaining(_lastFraction);
     }
