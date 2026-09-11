@@ -88,6 +88,7 @@ public sealed record TitleSummary
 public sealed class LibraryScanner(
     IFileSystem fs,
     AdvisorOptions? advisorOptions = null,
+    Func<string, long?>? knownCompressedFloor = null,
     SamplingOptions? samplingOptions = null,
     ICompressibilityProbe? probe = null,
     TimeProvider? timeProvider = null)
@@ -96,7 +97,7 @@ public sealed class LibraryScanner(
     private readonly SteamReader _reader = new(fs);
     private readonly FolderProfiler _profiler = new(fs);
     private readonly SamplingEstimator _estimator = new(fs, probe, samplingOptions);
-    private readonly Advisor _advisor = new(advisorOptions, timeProvider);
+    private readonly Advisor _advisor = new(advisorOptions, timeProvider, knownCompressedFloor);
 
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 

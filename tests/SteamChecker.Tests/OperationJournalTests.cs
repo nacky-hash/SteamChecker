@@ -103,4 +103,57 @@ public class OperationJournalTests : IDisposable
         Assert.Single(unfinished);
         Assert.Equal("decompress" + OperationJournal.BeginSuffix, unfinished[0].Operation);
     }
+
+    private static CompressionResult Result(string path, long before, long after, bool success = true) => new()
+    {
+        Success = success,
+        Path = path,
+        BytesBefore = before,
+        BytesAfter = after,
+        FilesProcessed = 3,
+        Duration = TimeSpan.FromSeconds(1),
+    };
+
+    // =================================================================
+    // D-021: 圧縮しきった到達点を記録から引く
+    // =================================================================
+
+    [Fact]
+    public void 圧縮しきった実績を到達点として返す()
+    {
+        var journal = new OperationJournal(_path);
+        journal.Record("compress", 1, "Game A", Result(@"C:\games", 1000, 400));
+
+        Assert.Equal(400, journal.CompressedFloors()[@"C:\games"]);
+    }
+
+    [Fact]
+    public void 複数回の記録があれば最小の到達点を採る()
+    {
+        var journal = new OperationJournal(_path);
+        journal.Record("compress", 1, "Game A", Result(@"C:\games", 1000, 500));
+        journal.Record("compress", 1, "Game A", Result(@"C:\games", 900, 400));
+
+        // 一度でもそこまで縮んだのなら、その値には到達できる
+        Assert.Equal(400, journal.CompressedFloors()[@"C:\games"]);
+    }
+
+    [Fact]
+    public void 失敗した圧縮は到達点に数えない()
+    {
+        var journal = new OperationJournal(_path);
+        journal.Record("compress", 1, "Game A", Result(@"C:\games", 1000, 900, success: false));
+
+        Assert.Empty(journal.CompressedFloors());
+    }
+
+    [Fact]
+    public void 復元の記録は到達点に数えない()
+    {
+        var journal = new OperationJournal(_path);
+        journal.Record("decompress", 1, "Game A", Result(@"C:\games", 400, 1000));
+
+        // 復元後のサイズを「圧縮の到達点」と取り違えると、残量をゼロと誤判定する
+        Assert.Empty(journal.CompressedFloors());
+    }
 }

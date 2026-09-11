@@ -145,6 +145,23 @@ public partial class MainWindow : Window
     // =================================================================
 
     /// <summary>
+    /// 過去に圧縮しきったときの実占有バイト数をジャーナルから読む（D-021）。
+    /// 圧縮の到達点は決定的なので、推定より確かな下限になる。
+    /// </summary>
+    private static IReadOnlyDictionary<string, long> ReadCompressedFloors()
+    {
+        try
+        {
+            return new OperationJournal(OperationJournal.DefaultPath).CompressedFloors();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 記録が読めなければ推定だけで判断する。解析を止めるほどのことではない
+            return new Dictionary<string, long>();
+        }
+    }
+
+    /// <summary>
     /// 前回の操作が完了していなければ知らせる（D-020）。
     ///
     /// メモリ不足などでプロセスごと落とされると、GUI は何も表示せずに消える。
@@ -308,7 +325,12 @@ public partial class MainWindow : Window
             });
 
             // 判定は全て Core 側。UI スレッドを塞がないよう別スレッドで回す
-            var scanner = new LibraryScanner(_fs);
+            // 過去に圧縮しきった実績があれば、サンプリング推定より優先する（D-021）
+            var floors = ReadCompressedFloors();
+            var scanner = new LibraryScanner(
+                _fs,
+                advisorOptions: null,
+                knownCompressedFloor: path => floors.TryGetValue(path, out var bytes) ? bytes : null);
             var steamRoot = _steamRoot;
             var token = _operationCts.Token;
             var result = await Task.Run(() => scanner.Scan(steamRoot, progress, token), token);

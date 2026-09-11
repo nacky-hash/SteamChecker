@@ -65,7 +65,9 @@ int RunScan()
         LargeSavingBytes = MegabytesOption("--large-saving-mb") ?? defaults.LargeSavingBytes,
     };
 
-    var scanner = new LibraryScanner(fs, options);
+    // 過去に圧縮しきった実績があれば、サンプリング推定より優先する（D-021）
+    var floors = ReadCompressedFloors();
+    var scanner = new LibraryScanner(fs, options, LookupFloor(floors));
 
     ScanResult result;
 
@@ -346,11 +348,22 @@ async Task<int> RunCompressAsync(bool compress)
         var profile = new FolderProfiler(fs).Profile(app.FullPath);
         var estimate = new SamplingEstimator(fs).Estimate(profile);
 
+        // 残量の計算は Advisor に集約されている（二重計上の解消 D-019 と、
+        // 過去実績による補正 D-021 を含む）。ここで独自に計算すると
+        // scan が出す数字と食い違う（2026-09-12 に実際に食い違っていた）
+        var assessment = new Advisor(knownCompressedFloor: LookupFloor(ReadCompressedFloors()))
+            .Assess(app, profile, estimate, play: null, isNtfs: true);
+
+        var remaining = assessment.RemainingSavedBytes;
+        var remainingFraction = profile.TotalLogicalBytes > 0
+            ? (double)remaining / profile.TotalLogicalBytes
+            : 0;
+
         Console.WriteLine($"{app.Name}");
         Console.WriteLine($"  パス      {app.FullPath}");
         Console.WriteLine($"  サイズ    {AdviceFormatter.Bytes(profile.TotalLogicalBytes)}");
-        Console.WriteLine($"  見込み    {AdviceFormatter.Bytes(estimate.EstimatedSavedBytes)} 削減 "
-                          + $"({estimate.SavedFraction:P0}){(estimate.Measured ? " ※実測" : " ※推定")}");
+        Console.WriteLine($"  見込み    {AdviceFormatter.Bytes(remaining)} 削減 "
+                          + $"({remainingFraction:P0}){(estimate.Measured ? " ※実測" : " ※推定")}");
         Console.WriteLine($"  所要目安  {FormatDurationRange(profile.TotalLogicalBytes)}");
 
         // 大きいタイトルほど中断に遭遇しやすい。何が起きるかを先に伝えておく
@@ -540,6 +553,28 @@ int UnknownCommand(string name)
 // =====================================================================
 // D-020: 中断を次回に伝える / 落とされる前に自分で止まる
 // =====================================================================
+
+/// <summary>
+/// 過去に圧縮しきったときの実占有バイト数をジャーナルから読む（D-021）。
+/// </summary>
+IReadOnlyDictionary<string, long> ReadCompressedFloors()
+{
+    try
+    {
+        var probe = new OperationJournal(GetOption("--journal") ?? OperationJournal.DefaultPath);
+        return probe.CompressedFloors();
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        // 記録が読めなければ推定だけで判断する。判定を止めるほどのことではない
+        Warn($"操作ログを読めませんでした（推定のみで判断します）: {ex.Message}");
+        return new Dictionary<string, long>();
+    }
+}
+
+/// <summary>辞書引きを Advisor に渡せる形にする。</summary>
+Func<string, long?> LookupFloor(IReadOnlyDictionary<string, long> floors) =>
+    path => floors.TryGetValue(path, out var bytes) ? bytes : null;
 
 /// <summary>
 /// 前回の操作が完了していなければ知らせる。

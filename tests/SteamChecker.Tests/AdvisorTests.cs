@@ -414,4 +414,78 @@ public class AdvisorTests
 
         Assert.Equal(50 * GiB, result.SizeBytes);
     }
+
+    // =================================================================
+    // D-021: 過去に圧縮しきった実績を推定より優先する
+    //
+    // 圧縮の到達点は決定的で、同じ内容なら何度やっても同じ値になる。
+    // サンプリング推定が「まだ縮む」と言っても、実測でそこで止まった
+    // 実績があるなら推定のほうが誤っている（R.I.P. で 1.62GB 過大に出た）。
+    // =================================================================
+
+    [Fact]
+    public void 圧縮しきった実績があれば残量をゼロと判定する()
+    {
+        // 推定は「100GiB が 60GiB まで縮む」と言うが、
+        // 実際には 80GiB で止まった実績がある。もう縮む余地は無い
+        var advisor = new Advisor(null, new FixedTimeProvider(Now), _ => 80 * GiB);
+
+        var assessment = advisor.Assess(
+            App(sizeBytes: 100 * GiB),
+            Profile(sizeBytes: 100 * GiB, physicalBytes: 80 * GiB),
+            Estimate(0.6, 100 * GiB),
+            Played(5),
+            isNtfs: true);
+
+        Assert.Equal(0, assessment.RemainingSavedBytes);
+    }
+
+    [Fact]
+    public void 部分的に解けた分だけを残量として出す()
+    {
+        // 過去に 70GiB まで縮んだ。更新で 90GiB に戻っている。
+        // 残りは差分の 20GiB（推定だけなら 30GiB と過大に出るところ）
+        var advisor = new Advisor(null, new FixedTimeProvider(Now), _ => 70 * GiB);
+
+        var assessment = advisor.Assess(
+            App(sizeBytes: 100 * GiB),
+            Profile(sizeBytes: 100 * GiB, physicalBytes: 90 * GiB),
+            Estimate(0.6, 100 * GiB),
+            Played(5),
+            isNtfs: true);
+
+        Assert.Equal(20 * GiB, assessment.RemainingSavedBytes);
+    }
+
+    [Fact]
+    public void 実績が古くて小さければ推定を採る()
+    {
+        // 更新で内容が増えると、古い到達点は小さすぎて当てにならない。
+        // 大きい方を採るので、増えた分の圧縮余地を取りこぼさない
+        var advisor = new Advisor(null, new FixedTimeProvider(Now), _ => 30 * GiB);
+
+        var assessment = advisor.Assess(
+            App(sizeBytes: 100 * GiB),
+            Profile(sizeBytes: 100 * GiB, physicalBytes: 100 * GiB),
+            Estimate(0.5, 100 * GiB),
+            Played(5),
+            isNtfs: true);
+
+        Assert.Equal(50 * GiB, assessment.RemainingSavedBytes);
+    }
+
+    [Fact]
+    public void 実績が無ければ従来どおり推定で判定する()
+    {
+        var advisor = new Advisor(null, new FixedTimeProvider(Now), _ => null);
+
+        var assessment = advisor.Assess(
+            App(sizeBytes: 100 * GiB),
+            Profile(sizeBytes: 100 * GiB, physicalBytes: 100 * GiB),
+            Estimate(0.6, 100 * GiB),
+            Played(5),
+            isNtfs: true);
+
+        Assert.Equal(40 * GiB, assessment.RemainingSavedBytes);
+    }
 }

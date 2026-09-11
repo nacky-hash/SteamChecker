@@ -36,10 +36,19 @@ public sealed record AdvisorOptions
 /// このクラスは プレイ履歴 × 更新頻度 × 実測圧縮率 × サイズ × 技術的制約 を
 /// 突き合わせて、タイトルごとに 1 つの推奨と、その根拠を返す。
 /// </summary>
-public sealed class Advisor(AdvisorOptions? options = null, TimeProvider? timeProvider = null)
+public sealed class Advisor(
+    AdvisorOptions? options = null,
+    TimeProvider? timeProvider = null,
+    Func<string, long?>? knownCompressedFloor = null)
 {
     private readonly AdvisorOptions _options = options ?? new AdvisorOptions();
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
+
+    /// <summary>
+    /// パス → 過去に圧縮しきったときの実占有バイト数（記録が無ければ null）。
+    /// 推定を実測で上書きするために使う（D-021）。
+    /// </summary>
+    private readonly Func<string, long?>? _knownFloor = knownCompressedFloor;
 
     public GameAssessment Assess(
         InstalledApp app,
@@ -70,6 +79,18 @@ public sealed class Advisor(AdvisorOptions? options = null, TimeProvider? timePr
         //   二重計上: 95 × 0.38 = 36GB（うち 24GB は既に実現済み）
         //   正しい値: 71 − 95×0.62 = 12GB
         var achievableBytes = (long)(size * estimate.Ratio);
+
+        // 過去に同じフォルダを圧縮しきった実績があるなら、そこが実際の下限。
+        // サンプリング推定が「まだ縮む」と言っても、実測でそこで止まったのなら
+        // 推定のほうが誤っている（D-021。R.I.P. で 1.62GB 過大に出た実例）。
+        //
+        // 内容が増えていれば推定のほうが大きくなるので、大きい方を採れば
+        // 「更新で増えた分は縮む」ケースも取りこぼさない。
+        if (_knownFloor?.Invoke(app.FullPath) is { } floor && floor > achievableBytes)
+        {
+            achievableBytes = floor;
+        }
+
         var currentBytes = profile.TotalPhysicalBytes > 0 ? profile.TotalPhysicalBytes : size;
 
         var savedBytes = Math.Max(0, currentBytes - achievableBytes);

@@ -175,6 +175,35 @@ public sealed class OperationJournal(string filePath)
             .ToList();
     }
 
+    /// <summary>
+    /// パスごとの「過去に圧縮しきったときの実占有バイト数」を返す。
+    ///
+    /// 圧縮の到達点は決定的で、同じ内容なら何度実行しても同じ値になる
+    /// （2026-09-12 に 2 タイトルで各 2 回、完全に一致することを実測）。
+    /// サンプリング推定が「まだ縮む」と言っても、実際にそこで止まった実績が
+    /// あるなら、そちらが確かな下限になる（D-021）。
+    ///
+    /// 同じパスに複数回の記録があれば最小値を採る。一度でもそこまで
+    /// 縮んだのなら、その値には到達できるため。
+    /// </summary>
+    public IReadOnlyDictionary<string, long> CompressedFloors()
+    {
+        var floors = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in ReadAll())
+        {
+            if (!entry.Success) continue;
+            if (!entry.Operation.Equals("compress", StringComparison.OrdinalIgnoreCase)) continue;
+            if (entry.BytesAfter <= 0) continue;
+
+            floors[entry.Path] = floors.TryGetValue(entry.Path, out var known)
+                ? Math.Min(known, entry.BytesAfter)
+                : entry.BytesAfter;
+        }
+
+        return floors;
+    }
+
     public JournalEntry Record(
         string operation,
         long appId,
