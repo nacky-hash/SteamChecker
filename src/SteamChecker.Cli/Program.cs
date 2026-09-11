@@ -406,16 +406,22 @@ async Task<int> ExecuteAsync(
     var lastReport = 0;
 
     // 実行前に開始を記録する。完了レコードが書かれないまま終わっていれば、
-    // 次回起動時に「中断された」と判定できる（D-020）
-    try
+    // 次回起動時に「中断された」と判定できる（D-020）。
+    //
+    // dry-run は書き込みを伴わないので、途中で落とされても伝えるべきことがない。
+    // 記録すると history に開始行だけが残って紛らわしい
+    if (!HasFlag("--dry-run"))
     {
-        journal.RecordBegin(
-            compress ? "compress" : "decompress",
-            appId, name, path, bytesBefore: 0, compress ? algorithm : null);
-    }
-    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-    {
-        Warn($"開始を記録できませんでした: {ex.Message}");
+        try
+        {
+            journal.RecordBegin(
+                compress ? "compress" : "decompress",
+                appId, name, path, bytesBefore: 0, compress ? algorithm : null);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Warn($"開始を記録できませんでした: {ex.Message}");
+        }
     }
 
     var progress = new Progress<CompressionProgress>(p =>
@@ -516,6 +522,11 @@ int RunHistory()
         return 0;
     }
 
+    // パスごとの最後のエントリ。開始レコードが「まだ未完了なのか、
+    // それとも後で完了したのか」を見分けるために使う
+    var lastByPath = new Dictionary<string, JournalEntry>(StringComparer.OrdinalIgnoreCase);
+    foreach (var e in entries) lastByPath[e.Path] = e;
+
     foreach (var e in entries)
     {
         // 開始レコードは「失敗」ではなく「完了レコードがまだ無い」だけ。
@@ -523,9 +534,15 @@ int RunHistory()
         if (e.Operation.EndsWith(OperationJournal.BeginSuffix, StringComparison.OrdinalIgnoreCase))
         {
             var operation = e.Operation[..^OperationJournal.BeginSuffix.Length];
+
+            // 後続に完了レコードがあるなら、この開始は「未完了」ではない。
+            // 一律に（未完了）と出すと、正常に終わった操作まで
+            // 中断されたかのように読める
+            var unfinished = lastByPath.TryGetValue(e.Path, out var last) && ReferenceEquals(last, e);
+
             Console.WriteLine(
                 $"{e.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm}  --  "
-                + $"{operation,-10} {e.Name}  （未完了）");
+                + $"{operation,-10} {e.Name}  {(unfinished ? "（未完了）" : "（開始）")}");
             continue;
         }
 
